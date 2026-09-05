@@ -151,6 +151,7 @@ endian = 'little'
 EOF
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
 meson setup build --prefix="$PREFIX" --default-library=static --buildtype=release \
+    -Drequire-system-font-provider=false \
     --cross-file cross_mpt.ini
 ninja -C build -j"$JOBS" && ninja -C build install
 

@@ -131,13 +131,29 @@ meson setup build --prefix="$PREFIX" --default-library=static --buildtype=releas
 ninja -C build -j"$JOBS" && ninja -C build install
 
 # ---------- 5. libass ----------
+# Built with meson + fontprovider=none: no fontconfig/expat needed at all —
+# fonts are memory-loaded from the app's fontsdir (libass load_fonts_from_dir).
 cd "$ROOT"
 fetch "https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz" .
 cd libass-0.17.3
+cat > cross_mpt.ini <<EOF
+[binaries]
+c = '$CC'
+cpp = '$CXX'
+ar = '$AR'
+strip = '$STRIP'
+pkg-config = 'pkg-config'
+[host_machine]
+system = 'android'
+cpu_family = 'aarch64'
+cpu = 'aarch64'
+endian = 'little'
+EOF
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
-./configure $COMMON --disable-fontconfig --disable-iconv --disable-directwrite --disable-coretext \
-    CC="$CC" CFLAGS="$CFLAGS" AR="$AR" RANLIB="$RANLIB"
-make -j"$JOBS" && make install
+meson setup build --prefix="$PREFIX" --default-library=static --buildtype=release \
+    -Dfontprovider=none -Dtests=disabled -Ddocs=disabled \
+    --cross-file cross_mpt.ini
+ninja -C build -j"$JOBS" && ninja -C build install
 
 # ---------- 6. FFmpeg ----------
 cd "$ROOT"

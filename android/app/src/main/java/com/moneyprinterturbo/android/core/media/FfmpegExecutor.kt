@@ -48,12 +48,12 @@ class FfmpegExecutor(private val context: Context) {
             proc.inputStream.bufferedReader().useLines { lines ->
                 for (line in lines) {
                     synchronized(outSb) { outSb.append(line).append('\n') }
-                    if (progress != null && line.startsWith("out_time_us=")) {
+                    if (progress != null && durationSec != null && line.startsWith("out_time_us=")) {
                         val us = line.substringAfter('=').trim().toLongOrNull()
-                        val total = durationSec ?: return@useLines
-                        if (us != null && total > 0) {
+                        val total = durationSec
+                        if (us != null && total != null && total > 0) {
                             val p = (us / 1_000_000.0 / total).toFloat().coerceIn(0f, 1f)
-                            progress(p)
+                            progress.invoke(p)
                         }
                     }
                 }
@@ -69,7 +69,7 @@ class FfmpegExecutor(private val context: Context) {
             val exit = proc.waitFor()
             tOut.join(5_000); tErr.join(5_000)
             if (exit != 0) {
-                val tail = synchronized(errSb) { errSb.toString() }.trim().lineSequence().takeLast(8).joinToString("\n")
+                val tail = synchronized(errSb) { errSb.toString() }.trim().lines().takeLast(8).joinToString("\n")
                 throw FfmpegException("ffmpeg failed (exit $exit):\n$tail")
             }
             return Run(exit, synchronized(outSb) { outSb.toString() }, synchronized(errSb) { errSb.toString() })

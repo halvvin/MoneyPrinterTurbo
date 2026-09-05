@@ -6,7 +6,7 @@ package com.moneyprinterturbo.android.core.llm
  */
 object Prompts {
 
-    const val DEFAULT_SCRIPT_SYSTEM_PROMPT = """
+    val DEFAULT_SCRIPT_SYSTEM_PROMPT: String = """
 # Role: Video Script Generator
 
 ## Goals:

@@ -75,7 +75,8 @@ object SubtitleBuilder {
             if (start < 0) start = w.startMs
             end = w.endMs
             sb.append(w.text)
-            if (sb.lastOrNull() in sentenceEnders) flush()
+            val last = sb.toString().trimEnd().lastOrNull()
+            if (last != null && sentenceEnders.indexOf(last) >= 0) flush()
         }
         flush()
         return cues

@@ -1,20 +1,22 @@
 package com.moneyprinterturbo.android.pipeline
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import androidx.work.Data
-import androidx.work.NotificationManagerCompat
 import com.moneyprinterturbo.android.core.db.MptDatabase
 import com.moneyprinterturbo.android.core.model.TaskStatus
 import com.moneyprinterturbo.android.core.storage.PrefsStore
+import com.moneyprinterturbo.android.core.storage.SecureStore
 import kotlinx.serialization.json.Json
-import okhttp3.OkHttpClient
 
 /**
  * WorkManager wrapper around TaskPipeline — keeps rendering alive in background and
@@ -28,7 +30,7 @@ class RenderWorker(
     override suspend fun doWork(): Result {
         val taskId = inputData.getString(KEY_TASK_ID) ?: return Result.failure()
         val db = MptDatabase.get(applicationContext)
-        val prefs = PrefsStore(applicationContext, com.moneyprinterturbo.android.core.storage.SecureStore(applicationContext))
+        val prefs = PrefsStore(applicationContext, SecureStore(applicationContext))
         val task = db.taskDao().get(taskId) ?: return Result.failure()
         try {
             setForeground(foregroundInfo())
@@ -53,8 +55,7 @@ class RenderWorker(
     }
 
     private fun foregroundInfo(): ForegroundInfo {
-        val nm = NotificationManagerCompat.from(applicationContext)
-        val notification = androidx.core.app.NotificationCompat.Builder(applicationContext, RenderNotifications.CHANNEL_RENDER)
+        val notification = android.app.Notification.Builder(applicationContext, RenderNotifications.CHANNEL_RENDER)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle("MoneyPrinterTurbo")
             .setContentText("Rendering video…")
@@ -89,11 +90,9 @@ object RenderNotifications {
     const val NOTIF_RENDER = 42
 
     fun ensureChannel(context: Context) {
-        if (android.os.Build.VERSION.SDK_INT >= 26) {
-            val ch = android.app.NotificationChannel(
-                CHANNEL_RENDER, "Video rendering", android.app.NotificationManager.IMPORTANCE_LOW,
-            )
-            androidx.core.app.NotificationManagerCompat.from(context).createNotificationChannel(ch)
+        if (Build.VERSION.SDK_INT >= 26) {
+            val ch = NotificationChannel(CHANNEL_RENDER, "Video rendering", NotificationManager.IMPORTANCE_LOW)
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
         }
     }
 }

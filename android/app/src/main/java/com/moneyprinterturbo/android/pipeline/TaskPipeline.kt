@@ -4,6 +4,7 @@ import android.content.Context
 import com.moneyprinterturbo.android.core.db.MptDatabase
 import com.moneyprinterturbo.android.core.db.TaskEntity
 import com.moneyprinterturbo.android.core.llm.LlmService
+import com.moneyprinterturbo.android.core.media.Cue
 import com.moneyprinterturbo.android.core.media.FfmpegExecutor
 import com.moneyprinterturbo.android.core.media.FontManager
 import com.moneyprinterturbo.android.core.media.MediaComposer
@@ -188,7 +189,7 @@ class TaskPipeline(
                 val segDur = audioDuration / segments.size.coerceAtLeast(1)
                 var t = 0.0
                 val est = segments.map { seg ->
-                    val c = Srt.Cue((t * 1000).toLong(), ((t + segDur) * 1000).toLong(), seg.trim())
+                    val c = Cue((t * 1000).toLong(), ((t + segDur) * 1000).toLong(), seg.trim())
                     t += segDur; c
                 }
                 srtFile = File(dir, "subtitle.srt").also { it.writeText(Srt.write(est)) }
@@ -246,7 +247,7 @@ class TaskPipeline(
 
         // Concat order: sequential or random (parity with upstream concat mode)
         val ordered = if (config.videoConcatMode == ConcatMode.SEQUENTIAL) scenes
-            else scenes.shuffled(UUID(task.id.hashCode().toLong()))
+            else scenes.shuffled(kotlin.random.Random(task.id.hashCode()))
         update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 90, "concatenating ${ordered.size} scenes")
         var current = composer.concat(ordered)
 

@@ -57,7 +57,7 @@ class EdgeTtsClient(private val http: OkHttpClient) {
             val escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 .replace("'", "&apos;").replace("\"", "&quot;")
             return "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>" +
-                "<voice name='$voice'><prosody pitch='$pitch' rate='$ratePercent(rate)' volume='$volumePct'>$escaped</prosody></voice></speak>"
+                "<voice name='$voice'><prosody pitch='$pitch' rate='${ratePercent(rate)}' volume='$volumePct'>$escaped</prosody></voice></speak>"
         }
 
         private fun dateStamp(): String {
@@ -118,13 +118,13 @@ class EdgeTtsClient(private val http: OkHttpClient) {
                         "Path:audio.metadata" in text -> {
                             val idx = text.lastIndexOf('{')
                             if (idx >= 0) try {
-                                val meta = kotlinx.serialization.json.Json.parseToJsonElement(text.substring(idx)).let {
-                                    kotlinx.serialization.json.jsonObject
-                                }
-                                if (meta["Type"]?.toString()?.contains("WordBoundary") == true) {
-                                    val offset = meta["Offset"]!!.toString().trim('"').toLongOrNull() ?: 0L
-                                    val duration = meta["Duration"]!!.toString().trim('"').toLongOrNull() ?: 0L
-                                    val w = meta["text"]?.toString()?.trim('"') ?: ""
+                                val meta = kotlinx.serialization.json.Json.parseToJsonElement(text.substring(idx))
+                                    .let { el -> el as kotlinx.serialization.json.JsonObject }
+                                val type = (meta["Type"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                                if (type == "WordBoundary") {
+                                    val offset = (meta["Offset"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+                                    val duration = (meta["Duration"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+                                    val w = (meta["text"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
                                     if (w.isNotBlank()) words += WordBoundary(offset, duration, w)
                                 }
                             } catch (_: Exception) { /* metadata frame ignored on parse error */ }
@@ -160,8 +160,9 @@ class EdgeTtsClient(private val http: OkHttpClient) {
             }
             error.get()?.let { throw EdgeTtsException(it) }
             if (audio.isEmpty()) throw EdgeTtsException("edge-tts returned no audio for the given text")
-            val merged = audio.reduce { a, b -> a.concat(b) }
-            Result(merged.toByteArray(), words)
+            val buf = java.io.ByteArrayOutputStream()
+            audio.forEach { buf.write(it.toByteArray()) }
+            Result(buf.toByteArray(), words)
         }
 }
 

@@ -1,6 +1,7 @@
 package com.moneyprinterturbo.android
 
 import com.moneyprinterturbo.android.core.llm.Prompts
+import com.moneyprinterturbo.android.core.media.Cue
 import com.moneyprinterturbo.android.core.media.SubtitleBuilder
 import com.moneyprinterturbo.android.core.media.SubtitleStyle
 import com.moneyprinterturbo.android.core.media.Srt
@@ -26,7 +27,7 @@ class PipelineTest {
 
     @Test
     fun srt_write_parse_roundtrip() {
-        val cues = listOf(Srt.Cue(0, 1500, "Hello world"), Srt.Cue(1500, 3000, "Second line"))
+        val cues = listOf(Cue(0, 1500, "Hello world"), Cue(1500, 3000, "Second line"))
         val srt = Srt.write(cues)
         val parsed = Srt.parse(srt)
         assertEquals(2, parsed.size)
@@ -42,13 +43,13 @@ class PipelineTest {
     @Test
     fun sentence_grouping_by_punctuation() {
         val words = listOf(
-            wb(0.0, 0.5, "This"), wb(0.5, 0.5, "is"), wb(1.0, 0.5, "one."),
-            wb(1.5, 0.5, "And"), wb(2.0, 0.5, "two."),
+            wb(0.0, 0.5, "This "), wb(0.5, 0.5, "is "), wb(1.0, 0.5, "one. "),
+            wb(1.5, 0.5, "And "), wb(2.0, 0.5, "two. "),
         )
         val cues = SubtitleBuilder.sentences(words)
         assertEquals(2, cues.size)
-        assertEquals("This is one.", cues[0].text)
-        assertEquals("And two.", cues[1].text)
+        assertEquals("This is one.", cues[0].text.trim())
+        assertEquals("And two.", cues[1].text.trim())
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.moneyprinterturbo.android.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,7 @@ import com.moneyprinterturbo.android.core.model.*
 import com.moneyprinterturbo.android.core.tts.TtsService
 import com.moneyprinterturbo.android.pipeline.RenderWorker
 import com.moneyprinterturbo.android.ui.components.*
+import com.moneyprinterturbo.android.ui.navigation.Routes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -332,3 +334,4 @@ fun VoicePickerDialog(current: String, onPick: (String) -> Unit, onDismiss: () -
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
+

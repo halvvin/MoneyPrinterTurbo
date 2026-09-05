@@ -13,6 +13,7 @@ import com.moneyprinterturbo.android.core.model.Stage
 import com.moneyprinterturbo.android.core.model.TaskConfig
 import com.moneyprinterturbo.android.core.model.TaskStatus
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 @Entity(tableName = "projects")

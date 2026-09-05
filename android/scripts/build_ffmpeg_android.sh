@@ -126,7 +126,7 @@ endian = 'little'
 EOF
 meson setup build --prefix="$PREFIX" --default-library=static --buildtype=release \
     -Dtests=disabled -Ddocs=disabled -Dbenchmark=disabled -Dintrospection=disabled \
-    -Dutils=disabled -Dicu=disabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled \
+    -Dutilities=disabled -Dicu=disabled -Dglib=disabled -Dgobject=disabled -Dcairo=disabled \
     --cross-file cross_mpt.ini
 ninja -C build -j"$JOBS" && ninja -C build install
 

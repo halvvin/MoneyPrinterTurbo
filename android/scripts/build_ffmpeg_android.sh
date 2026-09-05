@@ -78,7 +78,6 @@ export CC="$CC" CXX="$CXX" AR="$AR" STRIP="$STRIP" RANLIB="$RANLIB"
 ./configure --host=aarch64-linux --enable-static --enable-pic --disable-cli \
     --cross-prefix="$TOOLCHAIN/bin/llvm-" --sysroot="$SYSROOT" --prefix="$PREFIX"
 make -j"$JOBS" && make install
-unset CXX
 
 # ---------- 2. freetype ----------
 # GitHub tag-archive lacks the dlg submodule (make check_out_submodule fails),

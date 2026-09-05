@@ -82,8 +82,9 @@ unset CXX
 
 # ---------- 2. freetype ----------
 cd "$ROOT"
-fetch "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.gz" .
-cd freetype-2.13.3
+curl -sSL -o ft.tar.gz "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz"
+tar -xf ft.tar.gz
+cd freetype-VER-2-13-3
 ./configure $COMMON --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no \
     CC="$CC" CFLAGS="$CFLAGS" AR="$AR" RANLIB="$RANLIB"
 make -j"$JOBS" && make install
@@ -131,8 +132,9 @@ make -j"$JOBS" && make install
 
 # ---------- 6. FFmpeg ----------
 cd "$ROOT"
-fetch "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz" .
-cd ffmpeg-$FFMPEG_VERSION
+curl -sSL -o ffmpeg.tar.gz "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n$FFMPEG_VERSION.tar.gz"
+tar -xf ffmpeg.tar.gz
+cd FFmpeg-n$FFMPEG_VERSION
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
 ./configure \
     --prefix="$PREFIX" \
@@ -174,7 +176,7 @@ make -j"$JOBS"
 
 # ---------- 7. Package the single executable ----------
 mkdir -p "$OUT_DIR"
-cp "$ROOT/ffmpeg-$FFMPEG_VERSION/ffmpeg" "$OUT_DIR/libffmpeg_exec.so"
+cp "$ROOT/FFmpeg-n$FFMPEG_VERSION/ffmpeg" "$OUT_DIR/libffmpeg_exec.so"
 "$STRIP" "$OUT_DIR/libffmpeg_exec.so"
 chmod +x "$OUT_DIR/libffmpeg_exec.so"
 

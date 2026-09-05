@@ -188,6 +188,7 @@ export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
     --disable-postproc \
     --disable-network \
     --disable-autodetect \
+    --disable-everything \
     --disable-zlib --disable-lzma --disable-iconv --disable-bzlib \
     --disable-sdl2 --disable-xlib --disable-libxcb --disable-vaapi --disable-vdpau \
     --enable-protocol=file,pipe,concat \

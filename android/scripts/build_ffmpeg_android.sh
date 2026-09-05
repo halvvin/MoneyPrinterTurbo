@@ -73,7 +73,8 @@ if [ ! -d x264 ]; then
 fi
 cd x264
 ./configure --host=aarch64-linux --enable-static --enable-pic --disable-cli \
-    --cross-prefix="$TOOLCHAIN/bin/llvm-" --sysroot="$SYSROOT" --prefix="$PREFIX"
+    --cross-prefix="$TOOLCHAIN/bin/llvm-" --sysroot="$SYSROOT" --prefix="$PREFIX" \
+    CC="$CC" LD="$CC" AR="$AR" STRIP="$STRIP" RANLIB="$RANLIB"
 make -j"$JOBS" && make install
 
 # ---------- 2. freetype ----------

@@ -72,10 +72,13 @@ if [ ! -d x264 ]; then
         || git clone --depth 1 https://code.videolan.org/videolan/x264.git
 fi
 cd x264
+# x264's configure expects tools via cross-prefix; NDK clang names don't fit, so pass
+# env-style overrides (CC etc. as exported vars) which its configure honors.
+export CC="$CC" CXX="$CXX" AR="$AR" STRIP="$STRIP" RANLIB="$RANLIB"
 ./configure --host=aarch64-linux --enable-static --enable-pic --disable-cli \
-    --cross-prefix="$TOOLCHAIN/bin/llvm-" --sysroot="$SYSROOT" --prefix="$PREFIX" \
-    CC="$CC" LD="$CC" AR="$AR" STRIP="$STRIP" RANLIB="$RANLIB"
+    --cross-prefix="$TOOLCHAIN/bin/llvm-" --sysroot="$SYSROOT" --prefix="$PREFIX"
 make -j"$JOBS" && make install
+unset CXX
 
 # ---------- 2. freetype ----------
 cd "$ROOT"

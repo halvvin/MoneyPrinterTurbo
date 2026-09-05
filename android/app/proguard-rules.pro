@@ -1,0 +1,6 @@
+-keep class com.moneyprinterturbo.android.core.model.** { *; }
+-keepattributes *Annotation*, InnerClasses
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**

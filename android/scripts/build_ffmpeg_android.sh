@@ -81,10 +81,20 @@ make -j"$JOBS" && make install
 unset CXX
 
 # ---------- 2. freetype ----------
+# GitHub tag-archive lacks the dlg submodule (make check_out_submodule fails),
+# so use the official release tarball with mirror fallbacks.
 cd "$ROOT"
-curl -sSL -o ft.tar.gz "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz"
-tar -xf ft.tar.gz
-cd freetype-VER-2-13-3
+FT_OK=0
+for FT_URL in \
+    "https://github.com/freetype/freetype/releases/download/VER-2-13-3/ft-2.13.3.tar.xz" \
+    "https://mirror.netcologne.de/savannah/freetype/freetype-2.13.3.tar.gz" \
+    "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.gz"; do
+    echo "==> trying $FT_URL"
+    curl -sSfL --max-time 120 -o ft.src "$FT_URL" && tar -tf ft.src >/dev/null 2>&1 && FT_OK=1 && break
+done
+[ "$FT_OK" = "1" ] || { echo "freetype download failed"; exit 1; }
+mkdir ft-src && tar -xf ft.src -C ft-src --strip-components=1
+cd ft-src
 ./configure $COMMON --with-zlib=no --with-bzip2=no --with-png=no --with-harfbuzz=no --with-brotli=no \
     CC="$CC" CFLAGS="$CFLAGS" AR="$AR" RANLIB="$RANLIB"
 make -j"$JOBS" && make install

@@ -116,4 +116,5 @@
     <string name="share">分享</string>
     <string name="no_key">无密钥</string>
     <string name="models_header_hint">点击模型选择 — 测试检查连通性</string>
+    <string name="no_key_warning">⚠ 该提供商未存储 API 密钥 — 添加密钥前模型测试将失败</string>
 </resources>

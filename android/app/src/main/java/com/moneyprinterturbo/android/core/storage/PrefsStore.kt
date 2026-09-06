@@ -45,7 +45,8 @@ class PrefsStore(private val context: Context, private val secure: SecureStore) 
 
     suspend fun saveProvider(provider: LlmProvider) {
         val key = "llm_key_${provider.id}"
-        secure.put(key, provider.apiKey)
+        // Trim: copy-pasted keys often carry trailing whitespace/newlines that break auth.
+        secure.put(key, provider.apiKey.trim())
         val current = providersNow().toMutableList()
         val sanitized = provider.copy(apiKey = "") // never persist the key itself
         current.removeAll { it.id == provider.id }

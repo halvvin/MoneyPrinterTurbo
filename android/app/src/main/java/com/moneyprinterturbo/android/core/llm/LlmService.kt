@@ -36,6 +36,11 @@ class LlmService(private val http: OkHttpClient, private val json: Json) {
         }
 
     private fun chatOpenAi(provider: LlmProvider, model: String, system: String, user: String): String {
+        val key = provider.apiKey.trim()
+        if (key.isBlank()) throw LlmException(
+            "provider '${provider.name}' has no API key stored — open Settings → Providers, " +
+                "tap '${provider.name}', paste the key and Save"
+        )
         val body = buildJsonObject {
             put("model", model.ifBlank { provider.model })
             put("temperature", provider.temperature)
@@ -48,8 +53,10 @@ class LlmService(private val http: OkHttpClient, private val json: Json) {
 
         val url = provider.baseUrl.trimEnd('/') + "/chat/completions"
         val req = Request.Builder().url(url)
-            .header("Authorization", "Bearer ${provider.apiKey}")
+            .header("Authorization", "Bearer $key")
             .header("User-Agent", "MoneyPrinterTurbo-Android/1.0")
+            .header("HTTP-Referer", "https://github.com/harry0703/MoneyPrinterTurbo")
+            .header("X-Title", "MoneyPrinterTurbo Android")
             .post(body).build()
         http.newCall(req).execute().use { resp ->
             val text = resp.body?.string() ?: ""
@@ -161,7 +168,8 @@ class LlmService(private val http: OkHttpClient, private val json: Json) {
                 }
             }
             LlmKind.GEMINI -> {
-                val url = provider.baseUrl.trimEnd('/') + "/models?key=${provider.apiKey}"
+                val url = provider.baseUrl.trimEnd('/') +
+                    "/models?key=${provider.apiKey.trim().ifBlank { "MISSING" }}"
                 val req = Request.Builder().url(url).build()
                 http.newCall(req).execute().use { resp ->
                     val text = resp.body?.string() ?: ""

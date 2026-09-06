@@ -108,6 +108,7 @@ fun ProviderEditScreen(nav: NavController, id: String) {
     var storedKey by remember { mutableStateOf("") }
     var saveError by remember { mutableStateOf<String?>(null) }
     var showModelPicker by remember { mutableStateOf(false) }
+    var testMsg by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (!isNew) {
@@ -139,20 +140,40 @@ fun ProviderEditScreen(nav: NavController, id: String) {
         LabeledSwitch(stringResource(R.string.enabled), provider.enabled) { provider = provider.copy(enabled = it) }
 
         saveError?.let { ErrorBanner(it) }
+        testMsg?.let { Text(testMsg!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
 
-        Button(onClick = {
-            scope.launch {
-                try {
-                    // Blank key on an existing provider = keep the stored one (don't wipe).
-                    val final = if (provider.apiKey.isBlank() && storedKey.isNotBlank())
-                        provider.copy(apiKey = storedKey) else provider
-                    app.prefs.saveProvider(final)
-                    nav.popBackStack()
-                } catch (e: Exception) {
-                    saveError = "save failed: ${e.message}"
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                scope.launch {
+                    try {
+                        // Blank key on an existing provider = keep the stored one (don't wipe).
+                        val final = if (provider.apiKey.isBlank() && storedKey.isNotBlank())
+                            provider.copy(apiKey = storedKey) else provider
+                        app.prefs.saveProvider(final)
+                        nav.popBackStack()
+                    } catch (e: Exception) {
+                        saveError = "save failed: ${e.message}"
+                    }
                 }
-            }
-        }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.save)) }
+            }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.save)) }
+
+            val testingStr = stringResource(R.string.testing)
+            val noKeyStr = stringResource(R.string.no_key)
+            OutlinedButton(onClick = {
+                scope.launch {
+                    val effective = provider.copy(apiKey = provider.apiKey.trim().ifBlank { storedKey })
+                    if (effective.apiKey.isBlank() && effective.kind == LlmKind.OPENAI_COMPATIBLE) {
+                        testMsg = "✘ $noKeyStr — paste the key first"
+                    } else {
+                        testMsg = testingStr
+                        val r = LlmService(
+                            com.moneyprinterturbo.android.core.net.Http.client(), com.moneyprinterturbo.android.core.db.DbJson.json,
+                        ).testConnection(effective)
+                        testMsg = (if (r.ok) "✔ " else "✘ ") + r.message + " (${r.latencyMs}ms)"
+                    }
+                }
+            }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.test)) }
+        }
     }
 
     if (showModelPicker) {
@@ -171,6 +192,7 @@ fun ModelPickerDialog(provider: LlmProvider, onPick: (String) -> Unit, onDismiss
     var err by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var testResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val noKeyWarning = provider.apiKey.isBlank() && provider.kind == LlmKind.OPENAI_COMPATIBLE
     LaunchedEffect(provider.id) {
         try {
             models = LlmService(
@@ -192,6 +214,14 @@ fun ModelPickerDialog(provider: LlmProvider, onPick: (String) -> Unit, onDismiss
         title = { Text(stringResource(R.string.model_list)) },
         text = {
             Column {
+                if (noKeyWarning) {
+                    Text(
+                        stringResource(R.string.no_key_warning),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
                 OutlinedTextFieldMpt(query, { query = it }, stringResource(R.string.search))
                 when {
                     models == null -> {

@@ -115,4 +115,5 @@
     <string name="copied">Copied</string>
     <string name="share">Share</string>
     <string name="no_key">no key</string>
+    <string name="models_header_hint">Tap a model to select it — Test checks connectivity</string>
 </resources>

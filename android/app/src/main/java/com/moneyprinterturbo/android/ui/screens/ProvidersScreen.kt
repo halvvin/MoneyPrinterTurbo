@@ -164,12 +164,13 @@ fun ProviderEditScreen(nav: NavController, id: String) {
     }
 }
 
-/** Live model picker: fetches {baseUrl}/models from the provider; manual entry fallback. */
+/** Live model picker: fetches {baseUrl}/models from the provider; per-model test button. */
 @Composable
 fun ModelPickerDialog(provider: LlmProvider, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     var models by remember { mutableStateOf<List<String>?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    var testResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     LaunchedEffect(provider.id) {
         try {
             models = LlmService(
@@ -183,6 +184,8 @@ fun ModelPickerDialog(provider: LlmProvider, onPick: (String) -> Unit, onDismiss
     val all = models.orEmpty()
     val filtered = all.filter { it.contains(query, ignoreCase = true) }
         .sortedByDescending { it.endsWith(":free") }   // free tiers first
+    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -204,8 +207,23 @@ fun ModelPickerDialog(provider: LlmProvider, onPick: (String) -> Unit, onDismiss
                         }
                         LazyColumn(Modifier.height(380.dp)) {
                             items(filtered) { m ->
+                                val res = testResults[m]
                                 ListItem(
                                     headlineContent = { Text(m) },
+                                    supportingContent = res?.let {
+                                        { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
+                                    },
+                                    trailingContent = {
+                                        TextButton(onClick = {
+                                            testResults = testResults + (m to "…")
+                                            scope.launch {
+                                                val r = LlmService(
+                                                    com.moneyprinterturbo.android.core.net.Http.client(), com.moneyprinterturbo.android.core.db.DbJson.json,
+                                                ).testConnection(provider.copy(model = m))
+                                                testResults = testResults + (m to ((if (r.ok) "✔" else "✘ ") + r.message.take(60) + " ${r.latencyMs}ms"))
+                                            }
+                                        }) { Text(stringResource(R.string.test)) }
+                                    },
                                     modifier = Modifier.clickable { onPick(m) },
                                 )
                             }

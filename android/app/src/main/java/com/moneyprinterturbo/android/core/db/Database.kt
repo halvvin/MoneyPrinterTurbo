@@ -86,8 +86,8 @@ interface TaskDao {
     @Query("UPDATE tasks SET videoPath = :path, status = 1, progress = 100, stage = 'DONE', updatedAt = :now, finishedAt = :now WHERE id = :id")
     suspend fun markComplete(id: String, path: String, now: Long)
 
-    @Query("UPDATE tasks SET log = :log, updatedAt = :now WHERE id = :id")
-    suspend fun appendLog(id: String, log: String, now: Long)
+    @Query("UPDATE tasks SET log = substr(COALESCE(log, '') || :line, -16000), updatedAt = :now WHERE id = :id")
+    suspend fun appendLog(id: String, line: String, now: Long)
 
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun delete(id: String)

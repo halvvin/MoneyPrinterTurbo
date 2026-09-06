@@ -115,4 +115,5 @@
     <string name="copied">کپی شد</string>
     <string name="share">هم‌رسانی</string>
     <string name="no_key">بدون کلید</string>
+    <string name="models_header_hint">برای انتخاب، روی مدل بزن — «آزمون» اتصال را چک می‌کند</string>
 </resources>

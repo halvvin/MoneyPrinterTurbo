@@ -115,4 +115,5 @@
     <string name="copied">已复制</string>
     <string name="share">分享</string>
     <string name="no_key">无密钥</string>
+    <string name="models_header_hint">点击模型选择 — 测试检查连通性</string>
 </resources>

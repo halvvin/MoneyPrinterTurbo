@@ -50,7 +50,7 @@ class TaskPipeline(
         val now = System.currentTimeMillis()
         db.taskDao().updateProgress(taskId, status.code, progress.coerceIn(0, 100), stage.name, now)
         if (message != null) {
-            db.taskDao().appendLog(taskId, "[${now}] $message", now)
+            db.taskDao().appendLog(taskId, "\n[${now}] $message", now)
         }
     }
 
@@ -94,20 +94,29 @@ class TaskPipeline(
         if (config.executionMode == Mode.LOCAL && config.voiceName.isBlank() && config.customAudioFile == null) {
             throw Exception("no voice configured — select a voice or provide custom audio")
         }
+        // Fail fast on stock keys BEFORE burning LLM/TTS quota (upstream parity).
+        if (config.videoMaterials.isEmpty() && config.videoSource != VideoSource.LOCAL) {
+            keyFor(config.videoSource, prefs.stockKeys())
+            update(task.id, TaskStatus.RUNNING, Stage.QUEUED, 2,
+                "preflight OK — stock=${config.videoSource.vValue}, ffmpeg=${"%.1f".format(ffmpeg.binary.length() / 1048576.0)}MB")
+        }
 
         // ---------- 1. SCRIPT ----------
         if (config.videoScript.isBlank()) {
-            update(task.id, TaskStatus.RUNNING, Stage.SCRIPT, 5, "generating script")
-            checkCancel()
             val provider = prefs.providerFor(prefs.settingsNow(), "script")
                 ?: throw Exception("no LLM provider configured — add one in Settings → Providers")
+            val resolved = prefs.resolve(provider)
+            update(task.id, TaskStatus.RUNNING, Stage.SCRIPT, 5,
+                "generating script on ${provider.name} / ${prefs.settingsNow().scriptModel.ifBlank { provider.model }}")
+            checkCancel()
             val llm = LlmService(http, json)
             config.videoScript = llm.generateScript(
-                prefs.resolve(provider), config.videoSubject, config.videoLanguage,
+                resolved, config.videoSubject, config.videoLanguage,
                 config.paragraphNumber, config.videoScriptPrompt, config.customSystemPrompt,
                 prefs.settingsNow(),
             )
-            update(task.id, TaskStatus.RUNNING, Stage.SCRIPT, 10, "script generated (${config.videoScript.length} chars)")
+            update(task.id, TaskStatus.RUNNING, Stage.SCRIPT, 10,
+                "script generated (${config.videoScript.length} chars) via ${provider.name}")
         }
 
         // ---------- 2. TERMS ----------

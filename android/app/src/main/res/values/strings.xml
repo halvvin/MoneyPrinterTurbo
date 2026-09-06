@@ -105,4 +105,14 @@
     <string name="status_running">RUNNING</string>
     <string name="status_completed">COMPLETED</string>
     <string name="status_failed">FAILED</string>
+    <string name="model_list">Model list</string>
+    <string name="loading_models">Loading models…</string>
+    <string name="models_failed">Could not load the model list — type the model name manually or fix the Base URL</string>
+    <string name="use_typed">Use</string>
+    <string name="fetch_models">List</string>
+    <string name="key_stored_hint">A key is already stored (encrypted) — leave empty to keep it</string>
+    <string name="copy">Copy</string>
+    <string name="copied">Copied</string>
+    <string name="share">Share</string>
+    <string name="no_key">no key</string>
 </resources>

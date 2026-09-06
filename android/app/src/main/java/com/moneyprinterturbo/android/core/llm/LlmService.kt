@@ -133,6 +133,49 @@ class LlmService(private val http: OkHttpClient, private val json: Json) {
         }
     }
 
+    /**
+     * Fetch the provider's available model list — GET {baseUrl}/models (OpenAI format:
+     * {data:[{id}]}, Gemini: {models:[{name:"models/…"}]}). Used by the model picker UI.
+     */
+    suspend fun listModels(provider: LlmProvider): List<String> = withContext(Dispatchers.IO) {
+        when (provider.kind) {
+            LlmKind.OPENAI_COMPATIBLE -> {
+                val url = provider.baseUrl.trimEnd('/') + "/models"
+                val req = Request.Builder().url(url)
+                    .apply { if (provider.apiKey.isNotBlank()) header("Authorization", "Bearer ${provider.apiKey}") }
+                    .header("User-Agent", "MoneyPrinterTurbo-Android/1.0")
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    val text = resp.body?.string() ?: ""
+                    if (!resp.isSuccessful) throw LlmException("model list failed: HTTP ${resp.code}")
+                    val obj = json.parseToJsonElement(text).jsonObject
+                    val arr = (obj["data"] ?: obj["models"])?.jsonArray
+                        ?: throw LlmException("unexpected model-list response")
+                    arr.mapNotNull { el ->
+                        val o = el.jsonObject
+                        (o["id"] ?: o["name"])?.jsonPrimitive?.content
+                    }.map { it.removePrefix("models/") }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                        .sorted()
+                }
+            }
+            LlmKind.GEMINI -> {
+                val url = provider.baseUrl.trimEnd('/') + "/models?key=${provider.apiKey}"
+                val req = Request.Builder().url(url).build()
+                http.newCall(req).execute().use { resp ->
+                    val text = resp.body?.string() ?: ""
+                    if (!resp.isSuccessful) throw LlmException("model list failed: HTTP ${resp.code}")
+                    val obj = json.parseToJsonElement(text).jsonObject
+                    val arr = obj["models"]?.jsonArray ?: throw LlmException("unexpected gemini response")
+                    arr.mapNotNull { el ->
+                        el.jsonObject["name"]?.jsonPrimitive?.content?.removePrefix("models/")
+                    }.distinct().sorted()
+                }
+            }
+        }
+    }
+
     private fun safeError(body: String): String =
         try {
             json.parseToJsonElement(body).jsonObject["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content

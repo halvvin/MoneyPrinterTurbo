@@ -105,4 +105,14 @@
     <string name="status_running">در حال اجرا</string>
     <string name="status_completed">تمام‌شده</string>
     <string name="status_failed">ناموفق</string>
+    <string name="model_list">فهرست مدل‌ها</string>
+    <string name="loading_models">در حال دریافت مدل‌ها…</string>
+    <string name="models_failed">دریافت فهرست مدل‌ها ممکن نشد — نام مدل را دستی وارد کنید یا Base URL را بررسی کنید</string>
+    <string name="use_typed">استفاده</string>
+    <string name="fetch_models">فهرست</string>
+    <string name="key_stored_hint">کلیدی قبلاً ذخیره شده (رمزنگاری‌شده) — خالی بگذارید تا حفظ شود</string>
+    <string name="copy">کپی</string>
+    <string name="copied">کپی شد</string>
+    <string name="share">هم‌رسانی</string>
+    <string name="no_key">بدون کلید</string>
 </resources>

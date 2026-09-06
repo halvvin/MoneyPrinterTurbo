@@ -105,4 +105,14 @@
     <string name="status_running">运行中</string>
     <string name="status_completed">已完成</string>
     <string name="status_failed">失败</string>
+    <string name="model_list">模型列表</string>
+    <string name="loading_models">正在加载模型…</string>
+    <string name="models_failed">无法加载模型列表 — 请手动输入模型名称或检查 Base URL</string>
+    <string name="use_typed">使用</string>
+    <string name="fetch_models">列表</string>
+    <string name="key_stored_hint">已存储加密密钥 — 留空即保留</string>
+    <string name="copy">复制</string>
+    <string name="copied">已复制</string>
+    <string name="share">分享</string>
+    <string name="no_key">无密钥</string>
 </resources>

@@ -135,6 +135,11 @@ class LlmService(private val http: OkHttpClient, private val json: Json) {
         return try {
             val answer = chat(provider, provider.model, "You are a ping service.", "ping")
             ConnectionTest(true, answer.take(60), System.currentTimeMillis() - t0)
+        } catch (e: LlmException) {
+            val msg = if ("429" in e.message.toString())
+                "rate limited (429) — free-tier models are shared capacity; try again in a minute or pick another model"
+            else e.message.toString()
+            ConnectionTest(false, msg, System.currentTimeMillis() - t0)
         } catch (e: Exception) {
             ConnectionTest(false, e.message ?: e.javaClass.simpleName, System.currentTimeMillis() - t0)
         }

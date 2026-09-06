@@ -46,9 +46,10 @@ fun ProvidersScreen(nav: NavController) {
                     supportingContent = { Text(p.baseUrl + " · " + p.model) },
                     trailingContent = {
                         Row {
+                            val testingStr = stringResource(R.string.testing)
                             TextButton(onClick = {
                                 scope.launch {
-                                    testMsg = stringResource(R.string.testing)
+                                    testMsg = testingStr
                                     val result = LlmService(
                                         com.moneyprinterturbo.android.core.net.Http.client(), com.moneyprinterturbo.android.core.db.DbJson.json,
                                     ).testConnection(app.prefs.resolve(p))

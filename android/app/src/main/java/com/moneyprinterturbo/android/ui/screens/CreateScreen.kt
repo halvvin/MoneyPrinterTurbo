@@ -79,6 +79,7 @@ fun CreateScreen(nav: NavController) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val errNoProvider = stringResource(R.string.err_no_provider)
                     Button(
                         onClick = {
                             busy = "script"; error = null; info = null
@@ -86,14 +87,14 @@ fun CreateScreen(nav: NavController) {
                                 try {
                                     val llm = LlmService(com.moneyprinterturbo.android.core.net.Http.client(), DbJson.json)
                                     val provider = app.prefs.providerFor(app.prefs.settingsNow(), "script")
-                                        ?: throw IllegalStateException(stringResource(R.string.err_no_provider))
+                                        ?: throw IllegalStateException(errNoProvider)
                                     val s = llm.generateScript(
                                         app.prefs.resolve(provider), config.videoSubject, config.videoLanguage,
                                         config.paragraphNumber, config.videoScriptPrompt, config.customSystemPrompt,
                                         app.prefs.settingsNow(),
                                     )
                                     set(config.copy(videoScript = s))
-                                    info = stringResource(R.string.script_generated)
+                                    info = app.getString(R.string.script_generated)
                                 } catch (e: Exception) { error = e.message }
                                 busy = null
                             }
@@ -118,6 +119,7 @@ fun CreateScreen(nav: NavController) {
                     stringResource(R.string.match_script_order), config.matchMaterialsToScript,
                 ) { set(config.copy(matchMaterialsToScript = it)) }
                 Spacer(Modifier.height(8.dp))
+                val errNoProvider2 = stringResource(R.string.err_no_provider)
                 Button(
                     onClick = {
                         busy = "terms"; error = null; info = null
@@ -125,7 +127,7 @@ fun CreateScreen(nav: NavController) {
                             try {
                                 val llm = LlmService(com.moneyprinterturbo.android.core.net.Http.client(), DbJson.json)
                                 val provider = app.prefs.providerFor(app.prefs.settingsNow(), "terms")
-                                    ?: throw IllegalStateException(stringResource(R.string.err_no_provider))
+                                    ?: throw IllegalStateException(errNoProvider2)
                                 config.videoTerms = llm.generateTerms(
                                     app.prefs.resolve(provider), config.videoSubject, config.videoScript,
                                     5, config.matchMaterialsToScript, app.prefs.settingsNow(),
@@ -247,18 +249,19 @@ fun CreateScreen(nav: NavController) {
 
         // ---- Action buttons ----
         item {
+            val errNoTopics = stringResource(R.string.err_no_topics)
             Button(
                 onClick = {
                     scope.launch {
                         try {
                             if (batchMode) {
                                 val topics = batchTopics.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
-                                if (topics.isEmpty()) throw IllegalStateException(stringResource(R.string.err_no_topics))
+                                if (topics.isEmpty()) throw IllegalStateException(errNoTopics)
                                 topics.forEach { topic ->
                                     val proj = app.repository.createProject(config.copy(videoSubject = topic))
                                     app.repository.queueTask(proj)
                                 }
-                                info = stringResource(R.string.batch_queued, topics.size)
+                                info = app.getString(R.string.batch_queued, topics.size)
                             } else {
                                 val proj = app.repository.createProject(config)
                                 app.repository.queueTask(proj)

@@ -121,11 +121,36 @@ fun ProviderEditScreen(nav: NavController, id: String) {
         Text(if (isNew) stringResource(R.string.add_provider) else stringResource(R.string.edit_provider), style = MaterialTheme.typography.headlineSmall)
         OutlinedTextFieldMpt(provider.name, { provider = provider.copy(name = it) }, stringResource(R.string.provider_name))
         OutlinedTextFieldMpt(provider.baseUrl, { provider = provider.copy(baseUrl = it) }, stringResource(R.string.base_url))
-        OutlinedTextFieldMpt(
-            provider.apiKey, { provider = provider.copy(apiKey = it) },
-            stringResource(R.string.api_key),
-            supporting = if (storedKey.isNotBlank()) stringResource(R.string.key_stored_hint) else stringResource(R.string.key_secure_hint),
+
+        // --- Key section: masked, never displayed. Blank input always means "keep".
+        val keyOk = provider.apiKey.isNotBlank() || storedKey.isNotBlank()
+        Text(
+            stringResource(if (keyOk) R.string.key_is_set else R.string.key_is_missing),
+            color = if (keyOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
         )
+        if (!keyOk) {
+            OutlinedTextFieldMpt(provider.apiKey, { provider = provider.copy(apiKey = it) }, stringResource(R.string.paste_key_hint))
+        } else {
+            Text(
+                stringResource(R.string.key_masked_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        if (!isNew && storedKey.isNotBlank()) {
+            TextButton(onClick = {
+                scope.launch {
+                    try {
+                        app.prefs.saveProvider(provider.copy(apiKey = ""))
+                        storedKey = ""
+                        provider = provider.copy(apiKey = "")
+                        saveError = null
+                    } catch (e: Exception) { saveError = "remove key failed: ${e.message}" }
+                }
+            }) { Text(stringResource(R.string.remove_stored_key)) }
+        }
+
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextFieldMpt(provider.model, { provider = provider.copy(model = it) }, stringResource(R.string.model), modifier = Modifier.weight(1f))
             TextButton(onClick = { showModelPicker = true }, enabled = provider.baseUrl.isNotBlank()) {

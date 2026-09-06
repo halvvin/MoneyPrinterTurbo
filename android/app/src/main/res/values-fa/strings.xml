@@ -117,4 +117,9 @@
     <string name="no_key">بدون کلید</string>
     <string name="models_header_hint">برای انتخاب، روی مدل بزن — «آزمون» اتصال را چک می‌کند</string>
     <string name="no_key_warning">⚠ هیچ کلید API برای این پرووایدر ذخیره نشده — تا کلید اضافه نکنید تست مدل‌ها خطا می‌دهد</string>
+    <string name="key_is_set">🔑 کلید ذخیره شده (رمزنگاری‌شده)</string>
+    <string name="key_is_missing">⚠ کلیدی ذخیره نشده — پایپ‌لاین نمی‌تواند به این پرووایدر وصل شود</string>
+    <string name="paste_key_hint">کلید API را اینجا بچسبانید (sk-or-…)</string>
+    <string name="key_masked_hint">کلید هرگز نمایش داده نمی‌شود. برای تعویض، کلید ذخیره‌شده را حذف و کلید جدید را وارد کنید.</string>
+    <string name="remove_stored_key">حذف کلید ذخیره‌شده</string>
 </resources>

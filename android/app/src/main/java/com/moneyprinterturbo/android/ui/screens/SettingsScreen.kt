@@ -69,6 +69,14 @@ fun SettingsScreen(nav: NavController) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            val ff = remember {
+                com.moneyprinterturbo.android.core.media.FfmpegExecutor(app.applicationContext)
+            }
+            Text(
+                "FFmpeg: " + if (ff.isAvailable()) "OK (" + ff.binary.length() / (1024 * 1024) + " MB)" else "missing — " + ff.diagnose(),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (ff.isAvailable()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+            )
         }
 
         SectionCard(stringResource(R.string.section_advanced)) {

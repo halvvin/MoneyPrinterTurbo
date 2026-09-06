@@ -84,7 +84,10 @@ class TaskPipeline(
 
         // ---------- PREFLIGHT ----------
         update(task.id, TaskStatus.RUNNING, Stage.QUEUED, 1, "preflight")
-        if (!ffmpeg.isAvailable()) throw Exception("ffmpeg binary is not available on this device")
+        if (!ffmpeg.isAvailable()) ffmpeg.tryRecoverFromApk()
+        if (!ffmpeg.isAvailable()) throw Exception(
+            "ffmpeg binary is not available on this device [${ffmpeg.diagnose()}]"
+        )
         val stat = android.os.StatFs(dir.absolutePath)
         val freeMb = stat.availableBytes / (1024 * 1024)
         if (freeMb < 250) throw Exception("insufficient storage: ${freeMb}MB free, at least 250MB required")

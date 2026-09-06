@@ -14,8 +14,8 @@ android {
         applicationId = "com.moneyprinterturbo.android"
         minSdk = 29          // Android 10
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0-android"
+        versionCode = 2
+        versionName = "1.0.1-android"
         ndk {
             // Static ffmpeg binary shipped per-ABI; primary target arm64-v8a
             abiFilters += listOf("arm64-v8a")
@@ -40,7 +40,10 @@ android {
     buildFeatures { compose = true }
     packaging {
         jniLibs {
-            // The ffmpeg executable is stored as libffmpeg_exec.so and executed from nativeLibraryDir.
+            // CRITICAL: extract native libs to nativeLibraryDir at install time.
+            // The default (extractNativeLibs=false) keeps .so inside the APK where the
+            // ffmpeg executable can never be exec'd — preflight would always fail.
+            useLegacyPackaging = true
             keepDebugSymbols += "**/libffmpeg_exec.so"
         }
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

@@ -15,8 +15,10 @@ FFMPEG_VERSION="${FFMPEG_VERSION:-7.1.1}"
 X264_VERSION="${X264_VERSION:-stable}"
 ROOT="$(mktemp -d)"
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+# Make OUT_DIR absolute NOW (before any cd) — the script cd's into build dirs later.
+mkdir -p "$1"
+OUT_DIR="$(cd "$1" && pwd)"
 PREFIX="$ROOT/sysroot"
-OUT_DIR="${1:-$(dirname "$0")/../app/src/main/jniLibs/arm64-v8a}"
 API=29
 
 echo "==> workdir: $ROOT"

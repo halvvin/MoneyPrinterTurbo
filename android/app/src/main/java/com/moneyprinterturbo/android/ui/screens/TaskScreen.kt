@@ -77,10 +77,11 @@ fun TaskScreen(nav: NavController, id: String) {
                     Toast.makeText(app, R.string.copied, Toast.LENGTH_SHORT).show()
                 }) { Text(stringResource(R.string.copy)) }
                 TextButton(onClick = {
+                    val shareTitle = app.getString(R.string.share)
                     val send = android.content.Intent(android.content.Intent.ACTION_SEND)
                         .setType("text/plain")
                         .putExtra(android.content.Intent.EXTRA_TEXT, t.log)
-                    app.startActivity(android.content.Intent.createChooser(send, stringResource(R.string.share)))
+                    app.startActivity(android.content.Intent.createChooser(send, shareTitle))
                 }) { Text(stringResource(R.string.share)) }
             }
             // Selectable long-press text — user can select ranges manually too.

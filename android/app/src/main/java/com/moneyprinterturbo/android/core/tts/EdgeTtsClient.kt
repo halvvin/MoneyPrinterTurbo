@@ -37,6 +37,10 @@ class EdgeTtsClient(private val http: OkHttpClient) {
         fun secMsGec(unixSeconds: Long = System.currentTimeMillis() / 1000): String {
             var ticks = unixSeconds + 11_644_473_600L // Windows epoch (1601) in seconds
             ticks -= ticks % 300                      // 5-minute quantization
+            // Convert to Windows file time in 100-nanosecond intervals. The server
+            // REQUIRES this scaled value (edge-tts fix, rany2/edge-tts#290) — hashing
+            // seconds produces an invalid token that is always rejected with HTTP 403.
+            ticks *= 10_000_000L
             val input = "$ticks$TRUSTED_CLIENT_TOKEN"
             val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.US_ASCII))
             return digest.joinToString("") { "%02X".format(it) }
@@ -44,6 +48,7 @@ class EdgeTtsClient(private val http: OkHttpClient) {
 
         fun wssUrl(): String =
             "$BASE_WSS?TrustedClientToken=$TRUSTED_CLIENT_TOKEN" +
+                "&ConnectionId=${java.util.UUID.randomUUID().toString().replace("-", "")}" +
                 "&Sec-MS-GEC=${secMsGec()}&Sec-MS-GEC-Version=1-$CHROMIUM_FULL_VERSION"
 
         /** Convert upstream voice_rate float (1.0 = normal) to prosody string, e.g. "+10%". */
@@ -139,11 +144,33 @@ class EdgeTtsClient(private val http: OkHttpClient) {
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
-                    com.moneyprinterturbo.android.core.logging.AppLogger.exceptionCtx(logTag, "socket_failure code=${response?.code}", t)
                     val code = response?.code
+                    // Diagnostic: compare server clock to device clock on auth rejections —
+                    // a skewed device clock also invalidates the Sec-MS-GEC token.
+                    var skewNote = ""
+                    if (code == 401 || code == 403) {
+                        try {
+                            val dateHdr = response?.header("Date")
+                            if (dateHdr != null) {
+                                val fmt = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US)
+                                fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                val serverMs = try { fmt.parse(dateHdr)?.time } catch (_: Exception) { null }
+                                if (serverMs != null) {
+                                    val skew = (System.currentTimeMillis() - serverMs) / 1000
+                                    skewNote = " device-clock-skew=${skew}s"
+                                    com.moneyprinterturbo.android.core.logging.AppLogger.logCtx(
+                                        logTag, "auth_reject code=$code skew=${skew}s server=$dateHdr")
+                                    if (kotlin.math.abs(skew) > 300) {
+                                        skewNote += " — device clock is wrong! Enable Settings→Date&time→Automatic"
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) { /* diagnostic only */ }
+                    }
+                    com.moneyprinterturbo.android.core.logging.AppLogger.exceptionCtx(logTag, "socket_failure code=${response?.code}", t)
                     error.set(
                         when (code) {
-                            401, 403 -> "edge-tts rejected the request (HTTP $code). The DRM token may be stale or the service is unavailable in your region."
+                            401, 403 -> "edge-tts rejected the request (HTTP $code). The DRM token may be stale or the service is unavailable in your region.$skewNote"
                             429 -> "edge-tts rate limited (HTTP 429). Retry later."
                             else -> t.message?.let { "edge-tts connection failed: $it" } ?: "edge-tts connection failed"
                         }

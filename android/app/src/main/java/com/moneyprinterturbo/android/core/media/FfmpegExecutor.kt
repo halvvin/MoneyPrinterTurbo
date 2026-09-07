@@ -135,6 +135,14 @@ class FfmpegExecutor(private val context: Context) {
         }
     }
 
+    /** Expose app-level logging for media components that hold no Context. */
+    fun log(tag: String, message: String) = AppLogger.log(context, tag, message)
+
+    /** App-PRIVATE internal dir guaranteed fopen-able by the bundled ffmpeg/libass
+     *  (no FUSE involvement, unlike /storage paths). */
+    val internalTmp: File
+        get() = File(context.cacheDir, "media-tmp").apply { mkdirs() }
+
     companion object {
         /** Extract output video duration (seconds) from `ffmpeg -i` stderr. */
         fun parseDuration(stderr: String): Double? {

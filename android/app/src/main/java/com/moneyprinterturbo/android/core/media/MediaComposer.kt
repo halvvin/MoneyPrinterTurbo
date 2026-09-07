@@ -118,14 +118,30 @@ class MediaComposer(
     fun burnSubtitles(video: File, srt: File, fontsDir: File, forceStyle: String): File {
         val out = File(tmpDir, "sub_${System.nanoTime()}.mp4")
         val duration = probeDuration(video)
+        // libass fopen()s the SRT directly; on some Android 11 FUSE views that open
+        // fails on external-storage paths even inside the app's own data dir, while
+        // ffmpeg's file protocol I/O on the same tree works. Copy the SRT into an
+        // app-PRIVATE internal dir (cache) and burn from there — most permissive.
+        val localSrt = File(ffmpeg.internalTmp, "burn_${System.nanoTime()}.srt")
+        try {
+            srt.copyTo(localSrt, overwrite = true)
+        } catch (_: Exception) {
+            localSrt.delete()
+        }
+        ffmpeg.log(
+            "SUB",
+            "burn src=${srt.absolutePath} exists=${srt.exists()} size=${srt.length()} " +
+                "local=${localSrt.absolutePath} localSize=${localSrt.length()}"
+        )
         ffmpeg.run(
             listOf("-y", "-hide_banner", "-i", video.absolutePath,
-                "-vf", FfmpegExecutor.subtitlesFilter(srt, fontsDir, forceStyle),
+                "-vf", FfmpegExecutor.subtitlesFilter(localSrt, fontsDir, forceStyle),
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                 "-c:a", "copy", "-movflags", "+faststart",
                 out.absolutePath),
             duration,
         )
+        localSrt.delete()
         return out
     }
 

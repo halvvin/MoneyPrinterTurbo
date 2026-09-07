@@ -15,7 +15,9 @@ object Srt {
         val m = (total % 3_600_000) / 60_000
         val s = (total % 60_000) / 1000
         val milli = total % 1000
-        return "%02d:%02d:%02d,%03d".format(h, m, s, milli)
+        // Locale.US is REQUIRED: with a device set to fa/AR the default locale
+        // emits Eastern-Arabic digits (۰۱:۲۳,۴۵۶) which ffmpeg/libass cannot parse.
+        return "%02d:%02d:%02d,%03d".format(java.util.Locale.US, h, m, s, milli)
     }
 
     fun write(cues: List<Cue>): String = buildString {

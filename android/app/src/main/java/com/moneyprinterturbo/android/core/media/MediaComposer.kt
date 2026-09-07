@@ -145,5 +145,7 @@ class MediaComposer(
         return FfmpegExecutor.parseDuration(run.stderr)
     }
 
-    private fun fmt(d: Double): String = "%.3f".format(d)
+    // Locale.US is REQUIRED: default locale on fa/AR devices produces Eastern-Arabic
+    // digits (۵٫۰۰۰) — ffmpeg rejects them ("Invalid duration for option t", exit 234).
+    private fun fmt(d: Double): String = "%.3f".format(java.util.Locale.US, d)
 }

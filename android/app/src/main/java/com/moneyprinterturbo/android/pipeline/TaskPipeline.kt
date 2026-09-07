@@ -343,7 +343,29 @@ class TaskPipeline(
                 foreColor = config.textForeColor, backColor = config.textBackgroundColor,
                 strokeColor = config.strokeColor, strokeWidth = config.strokeWidth,
             )
-            current = composer.burnSubtitles(current, srtFile, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
+            // Stage the SRT INSIDE the ffmpeg process CWD (cacheDir/ffmpeg-cwd/burn.srt)
+            // and burn via the RELATIVE name: the most primitive possible fopen for
+            // libass. State is reported into the TASK LOG so any skip is visible to the
+            // user; a staging failure degrades to subtitle-less output, not task failure.
+            val staged = ffmpeg.stagedSrtFile()
+            val content: String? = try {
+                srtFile!!.readText()
+            } catch (e: Exception) {
+                update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 95, "subtitles skipped: cannot read SRT (${e.message})")
+                null
+            }
+            if (content != null && content.isNotBlank()) {
+                try {
+                    staged.writeText(content)
+                    update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 95, "burning subtitles (srt=${content.length}B staged=${staged.length()}B)")
+                    current = composer.burnSubtitles(current, staged, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
+                } catch (e: Exception) {
+                    update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 95, "subtitles staged but burn failed: ${e.message}")
+                    throw e
+                }
+            } else if (content != null) {
+                update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 95, "subtitles skipped: SRT empty (src=${srtFile!!.length()}B)")
+            }
         }
 
         update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 98, "finalizing ${config.videoCount} output(s)")
@@ -376,7 +398,12 @@ class TaskPipeline(
                             foreColor = config.textForeColor, backColor = config.textBackgroundColor,
                             strokeColor = config.strokeColor, strokeWidth = config.strokeWidth,
                         )
-                        current = composer.burnSubtitles(current, srtFile, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
+                        val staged = ffmpeg.stagedSrtFile()
+                        val content: String? = try { srtFile!!.readText() } catch (_: Exception) { null }
+                        if (!content.isNullOrBlank()) {
+                            staged.writeText(content)
+                            current = composer.burnSubtitles(current, staged, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
+                        }
                     }
                 }
             }

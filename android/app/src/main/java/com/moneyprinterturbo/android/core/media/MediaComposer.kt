@@ -114,34 +114,26 @@ class MediaComposer(
         return out
     }
 
-    /** Burn subtitles into the video — parity with upstream subtitle stage. */
+    /** Burn subtitles into the video — parity with upstream subtitle stage.
+     *  [stagedSrt] is staged via [FfmpegExecutor.stagedSrtFile] (inside the ffmpeg
+     *  process CWD) and referenced by RELATIVE name: libass fopen()s it against the
+     *  CWD — immune to the FUSE/absolute-path quirks seen on some Android 11 devices. */
     fun burnSubtitles(video: File, srt: File, fontsDir: File, forceStyle: String): File {
         val out = File(tmpDir, "sub_${System.nanoTime()}.mp4")
         val duration = probeDuration(video)
-        // libass fopen()s the SRT directly; on some Android 11 FUSE views that open
-        // fails on external-storage paths even inside the app's own data dir, while
-        // ffmpeg's file protocol I/O on the same tree works. Copy the SRT into an
-        // app-PRIVATE internal dir (cache) and burn from there — most permissive.
-        val localSrt = File(ffmpeg.internalTmp, "burn_${System.nanoTime()}.srt")
-        try {
-            srt.copyTo(localSrt, overwrite = true)
-        } catch (_: Exception) {
-            localSrt.delete()
-        }
+        val name = srt.name // "burn.srt" — relative to the ffmpeg process CWD
         ffmpeg.log(
             "SUB",
-            "burn src=${srt.absolutePath} exists=${srt.exists()} size=${srt.length()} " +
-                "local=${localSrt.absolutePath} localSize=${localSrt.length()}"
+            "burn staged=${srt.absolutePath} exists=${srt.exists()} size=${srt.length()} rel=$name"
         )
         ffmpeg.run(
             listOf("-y", "-hide_banner", "-i", video.absolutePath,
-                "-vf", FfmpegExecutor.subtitlesFilter(localSrt, fontsDir, forceStyle),
+                "-vf", "subtitles=$name:fontsdir=${FfmpegExecutor.escapeFilterPath(fontsDir.absolutePath)}:force_style='$forceStyle'",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                 "-c:a", "copy", "-movflags", "+faststart",
                 out.absolutePath),
             duration,
         )
-        localSrt.delete()
         return out
     }
 

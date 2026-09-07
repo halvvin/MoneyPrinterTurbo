@@ -84,7 +84,7 @@ class FfmpegExecutor(private val context: Context) {
             "ffmpeg binary is missing or not executable at ${binary.absolutePath} — build pipeline broken"
         )
         val tmp = File(context.cacheDir, "ffmpeg-progress-${System.nanoTime()}.txt")
-        val workDir = File(context.cacheDir, "ffmpeg-cwd").apply { mkdirs() }
+        val workDir = workDirFile()
         val proc: Process
         try {
             AppLogger.log(context, "FFMPEG", "start args=${args.take(8).joinToString(" ")}${if (args.size > 8) " …" else ""}")
@@ -137,6 +137,14 @@ class FfmpegExecutor(private val context: Context) {
 
     /** Expose app-level logging for media components that hold no Context. */
     fun log(tag: String, message: String) = AppLogger.log(context, tag, message)
+
+    /** The ffmpeg process CWD (constant across runs). Files staged here can be
+     *  referenced by RELATIVE name in filter args — the simplest possible fopen
+     *  path for libass, immune to FUSE/escaping/absolute-path quirks. */
+    fun workDirFile(): File = File(context.cacheDir, "ffmpeg-cwd").apply { mkdirs() }
+
+    /** Where the pipeline stages the SRT to burn (inside the ffmpeg CWD). */
+    fun stagedSrtFile(): File = File(workDirFile(), "burn.srt")
 
     /** App-PRIVATE internal dir guaranteed fopen-able by the bundled ffmpeg/libass
      *  (no FUSE involvement, unlike /storage paths). */

@@ -70,12 +70,15 @@ class FfmpegExecutor(private val context: Context) {
         val success get() = exitCode == 0
     }
 
-    /** Run ffmpeg. [progress] receives parsed out_time_us when -progress is requested (0..1 given duration). */
+    /** Run ffmpeg. [progress] receives parsed out_time_us when -progress is requested (0..1 given duration).
+     *  [throwOnFailure]=false returns the Run instead of throwing on non-zero exit — used by metadata
+     *  probes, where `ffmpeg -i file` (no output) intentionally exits 1. */
     @Synchronized
     fun run(
         args: List<String>,
         durationSec: Double? = null,
         progress: ((Float) -> Unit)? = null,
+        throwOnFailure: Boolean = true,
     ): Run {
         if (!isAvailable()) throw FfmpegException(
             "ffmpeg binary is missing or not executable at ${binary.absolutePath} — build pipeline broken"
@@ -120,7 +123,7 @@ class FfmpegExecutor(private val context: Context) {
             val exit = proc.waitFor()
             tOut.join(5_000); tErr.join(5_000)
             AppLogger.log(context, "FFMPEG", "exit=$exit")
-            if (exit != 0) {
+            if (exit != 0 && throwOnFailure) {
                 val tail = synchronized(errSb) { errSb.toString() }.trim().lines().takeLast(8).joinToString("\n")
                 throw FfmpegException("ffmpeg failed (exit $exit):\n$tail")
             }

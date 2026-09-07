@@ -139,7 +139,9 @@ class MediaComposer(
     }
 
     fun probeDuration(file: File): Double? {
-        val run = ffmpeg.run(listOf("-hide_banner", "-i", file.absolutePath))
+        // `ffmpeg -i file` without an output file ALWAYS exits 1 — it is a metadata
+        // probe. Read the duration from stderr instead of treating exit 1 as failure.
+        val run = ffmpeg.run(listOf("-hide_banner", "-i", file.absolutePath), throwOnFailure = false)
         return FfmpegExecutor.parseDuration(run.stderr)
     }
 

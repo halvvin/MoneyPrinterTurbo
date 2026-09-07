@@ -14,8 +14,8 @@ android {
         applicationId = "com.moneyprinterturbo.android"
         minSdk = 29          // Android 10
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.0.9-android"
+        versionCode = 11
+        versionName = "1.0.10-android"
         ndk {
             // Static ffmpeg binary shipped per-ABI; primary target arm64-v8a
             abiFilters += listOf("arm64-v8a")

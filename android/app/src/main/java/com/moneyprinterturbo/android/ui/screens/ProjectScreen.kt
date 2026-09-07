@@ -218,6 +218,7 @@ fun HistoryScreen(nav: NavController) {
                                             "video/mp4",
                                         )
                                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                     app.startActivity(Intent.createChooser(intent, "Play video"))
                                 }) { Text(stringResource(R.string.play)) }
                             }

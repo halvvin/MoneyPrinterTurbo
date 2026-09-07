@@ -70,6 +70,7 @@ fun TaskScreen(nav: NavController, id: String) {
                             "video/mp4",
                         )
                         .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
                 }) { Text(stringResource(R.string.play)) }
             }
@@ -96,6 +97,7 @@ fun TaskScreen(nav: NavController, id: String) {
                                     androidx.core.content.FileProvider.getUriForFile(app, app.packageName + ".fileprovider", file),
                                     "video/mp4",
                                 ).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
                         }) { Text("Play") }
                     }
@@ -116,6 +118,7 @@ fun TaskScreen(nav: NavController, id: String) {
                     val send = android.content.Intent(android.content.Intent.ACTION_SEND)
                         .setType("text/plain")
                         .putExtra(android.content.Intent.EXTRA_TEXT, t.log)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     app.startActivity(android.content.Intent.createChooser(send, shareTitle))
                 }) { Text(stringResource(R.string.share)) }
             }

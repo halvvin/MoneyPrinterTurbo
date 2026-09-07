@@ -218,6 +218,7 @@ fun SettingsScreen(nav: NavController) {
                             .setType("text/plain")
                             .putExtra(android.content.Intent.EXTRA_STREAM, uri)
                             .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         app.startActivity(android.content.Intent.createChooser(intent, "Export diagnostic log"))
                     }
                 }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.export_logs)) }

@@ -32,6 +32,7 @@ class RenderWorker(
 
     override suspend fun doWork(): Result {
         val taskId = inputData.getString(KEY_TASK_ID) ?: return Result.failure()
+        AppLogger.log(applicationContext, "WORKER", "started task=$taskId attempt=$runAttemptCount")
         val db = MptDatabase.get(applicationContext)
         val prefs = PrefsStore(applicationContext, SecureStore(applicationContext))
         val task = db.taskDao().get(taskId) ?: return Result.failure()
@@ -86,7 +87,10 @@ class RenderWorker(
         fun enqueue(context: Context, taskId: String) {
             val request = OneTimeWorkRequestBuilder<RenderWorker>()
                 .setInputData(Data.Builder().putString(KEY_TASK_ID, taskId).build())
-                .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
+                // NOTE: no WorkManager constraints. The pipeline performs its own
+                // StatFs-based storage preflight with a clear error message; a
+                // requiresStorageNotLow constraint left tasks stuck in QUEUED
+                // forever on low-storage devices (SM-A205F) with an empty log.
                 .addTag("render_$taskId")
                 .build()
             WorkManager.getInstance(context)

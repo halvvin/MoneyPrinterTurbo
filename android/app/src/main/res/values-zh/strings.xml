@@ -122,4 +122,7 @@
     <string name="paste_key_hint">在此粘贴 API 密钥（sk-or-…）</string>
     <string name="key_masked_hint">密钥不会显示。要更换，请先删除已存储的密钥再粘贴新的。</string>
     <string name="remove_stored_key">删除已存储的密钥</string>
+    <string name="logging_description">诊断日志记录阶段、网络元数据和错误到应用私有文件。已脱敏。可在此导出。</string>
+    <string name="export_logs">导出日志</string>
+    <string name="clear_logs">清除日志</string>
 </resources>

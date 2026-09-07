@@ -122,4 +122,7 @@
     <string name="paste_key_hint">کلید API را اینجا بچسبانید (sk-or-…)</string>
     <string name="key_masked_hint">کلید هرگز نمایش داده نمی‌شود. برای تعویض، کلید ذخیره‌شده را حذف و کلید جدید را وارد کنید.</string>
     <string name="remove_stored_key">حذف کلید ذخیره‌شده</string>
+    <string name="logging_description">لاگ تشخیصی مراحل، متادیتای شبکه و خطاها را در فایلی خصوصی ثبت می‌کند. اسرار حذف می‌شوند. از همین‌جا خروجی بگیرید.</string>
+    <string name="export_logs">خروجی لاگ</string>
+    <string name="clear_logs">پاک‌سازی لاگ</string>
 </resources>

@@ -14,6 +14,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.moneyprinterturbo.android.core.db.MptDatabase
 import com.moneyprinterturbo.android.core.model.TaskStatus
+import com.moneyprinterturbo.android.core.logging.AppLogger
 import com.moneyprinterturbo.android.core.storage.PrefsStore
 import com.moneyprinterturbo.android.core.storage.SecureStore
 import kotlinx.serialization.json.Json
@@ -26,6 +27,8 @@ class RenderWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
+
+    private var activePipeline: TaskPipeline? = null
 
     override suspend fun doWork(): Result {
         val taskId = inputData.getString(KEY_TASK_ID) ?: return Result.failure()
@@ -42,17 +45,29 @@ class RenderWorker(
             com.moneyprinterturbo.android.core.net.Http.client(),
             Json { ignoreUnknownKeys = true; encodeDefaults = true },
         )
+        activePipeline = pipeline
         return try {
+            if (isStopped) { pipeline.cancel(); return Result.success() }
             pipeline.run(task)
             Result.success()
         } catch (e: TaskPipeline.CancelledException) {
+            AppLogger.log(applicationContext, "WORKER", "cancelled task=$taskId")
             Result.success(Data.Builder().putBoolean(KEY_CANCELLED, true).build())
         } catch (e: Exception) {
-            if (runAttemptCount < 1 && task.status != TaskStatus.FAILED.code) {
+            AppLogger.exception(applicationContext, "WORKER_ERROR", "task=$taskId attempt=$runAttemptCount", e)
+            val latest = db.taskDao().get(taskId)
+            if (latest?.status == TaskStatus.CANCELLED.code) {
+                Result.success(Data.Builder().putBoolean(KEY_CANCELLED, true).build())
+            } else if (runAttemptCount < 1 && latest?.status != TaskStatus.FAILED.code) {
                 Result.retry()
             } else Result.failure()
         }
     }
+
+    // NOTE: CoroutineWorker.onStopped() is final in WorkManager 2.9.1 and cannot be
+    // overridden. Cancellation is handled by Repository.cancelTask() marking the Room
+    // status CANCELLED + WorkManager cancelling the coroutine (caught in doWork), and
+    // by the isStopped check at the top of doWork().
 
     private fun foregroundInfo(): ForegroundInfo {
         val notification = android.app.Notification.Builder(applicationContext, RenderNotifications.CHANNEL_RENDER)

@@ -3,6 +3,7 @@ package com.moneyprinterturbo.android.pipeline
 import android.content.Context
 import com.moneyprinterturbo.android.core.db.MptDatabase
 import com.moneyprinterturbo.android.core.db.TaskEntity
+import com.moneyprinterturbo.android.core.logging.AppLogger
 import com.moneyprinterturbo.android.core.llm.LlmService
 import com.moneyprinterturbo.android.core.media.Cue
 import com.moneyprinterturbo.android.core.media.FfmpegExecutor
@@ -11,13 +12,17 @@ import com.moneyprinterturbo.android.core.media.MediaComposer
 import com.moneyprinterturbo.android.core.media.StockMediaClient
 import com.moneyprinterturbo.android.core.media.SubtitleBuilder
 import com.moneyprinterturbo.android.core.media.SubtitleStyle
+import com.moneyprinterturbo.android.core.media.WhisperClient
 import com.moneyprinterturbo.android.core.media.Srt
 import com.moneyprinterturbo.android.core.model.*
+import com.moneyprinterturbo.android.core.net.RemoteMptClient
+import com.moneyprinterturbo.android.core.net.SoniloClient
 import com.moneyprinterturbo.android.core.storage.PrefsStore
 import com.moneyprinterturbo.android.core.tts.TtsService
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import java.io.File
+import kotlinx.serialization.encodeToString
 import java.util.UUID
 
 /**
@@ -54,20 +59,24 @@ class TaskPipeline(
         }
     }
 
+    private data class PipelineResult(val first: File, val outputs: List<File>)
+
     suspend fun run(task: TaskEntity): TaskEntity {
         cancelled = false
         val config = com.moneyprinterturbo.android.core.db.DbJson.configFromString(task.configJson)
         try {
-            val video = runInternal(task, config)
-            db.taskDao().markComplete(task.id, video.absolutePath, System.currentTimeMillis())
+            val result = runInternal(task, config)
+            val outputJson = json.encodeToString(result.outputs.map { it.absolutePath })
+            db.taskDao().markComplete(task.id, result.first.absolutePath, outputJson, System.currentTimeMillis())
             db.projectDao().get(task.projectId)?.let { p ->
-                db.projectDao().upsert(p.copy(lastStatus = TaskStatus.COMPLETED.code, lastVideoPath = video.absolutePath, updatedAt = System.currentTimeMillis()))
+                db.projectDao().upsert(p.copy(lastStatus = TaskStatus.COMPLETED.code, lastVideoPath = result.first.absolutePath, updatedAt = System.currentTimeMillis()))
             }
             return db.taskDao().get(task.id)!!
         } catch (e: CancelledException) {
             db.taskDao().updateProgress(task.id, TaskStatus.CANCELLED.code, 0, Stage.QUEUED.name, System.currentTimeMillis())
             throw e
         } catch (e: Exception) {
+            AppLogger.exception(context, "PIPELINE_ERROR", "task=${task.id} stage failure", e)
             db.taskDao().markFailed(task.id, e.message ?: e.javaClass.simpleName, System.currentTimeMillis())
             db.projectDao().get(task.projectId)?.let { p ->
                 db.projectDao().upsert(p.copy(lastStatus = TaskStatus.FAILED.code, updatedAt = System.currentTimeMillis()))
@@ -76,8 +85,27 @@ class TaskPipeline(
         }
     }
 
-    private suspend fun runInternal(task: TaskEntity, config: TaskConfig): File {
+    private suspend fun runInternal(task: TaskEntity, config: TaskConfig): PipelineResult {
         val dir = outDir(task.id)
+        if (config.executionMode == Mode.CLOUD_API) {
+            throw Exception("CLOUD_API execution mode is not implemented yet; choose LOCAL or REMOTE instead of silently falling back to local execution")
+        }
+        if (config.executionMode == Mode.REMOTE) {
+            AppLogger.log(context, "PIPELINE", "using remote backend for task=${task.id}")
+            val remote = RemoteMptClient(context)
+            val final = remote.generate(config, dir, { p, stage ->
+                // RemoteMptClient's progress callback is a plain (Int,String)->Unit lambda;
+                // bridge the suspend Room write with a short runBlocking on the IO caller.
+                kotlinx.coroutines.runBlocking {
+                    update(task.id, TaskStatus.RUNNING, Stage.COMBINE, p, "remote: $stage")
+                }
+            }) { remoteTaskId ->
+                kotlinx.coroutines.runBlocking {
+                    db.taskDao().setRemoteTaskId(task.id, remoteTaskId, System.currentTimeMillis())
+                }
+            }
+            return PipelineResult(final, listOf(final))
+        }
         val ffmpeg = FfmpegExecutor(context)
         val composer = MediaComposer(ffmpeg, dir)
         var progress = 0
@@ -92,7 +120,8 @@ class TaskPipeline(
         val freeMb = stat.availableBytes / (1024 * 1024)
         if (freeMb < 250) throw Exception("insufficient storage: ${freeMb}MB free, at least 250MB required")
         if (config.executionMode == Mode.LOCAL && config.voiceName.isBlank() && config.customAudioFile == null) {
-            throw Exception("no voice configured — select a voice or provide custom audio")
+            // Upstream supports no-voice generation. Keep the task valid and synthesize silence later.
+            AppLogger.log(context, "PIPELINE", "no voice configured; using no-voice mode")
         }
         // Fail fast on stock keys BEFORE burning LLM/TTS quota (upstream parity).
         if (config.videoMaterials.isEmpty() && config.videoSource != VideoSource.LOCAL) {
@@ -120,6 +149,7 @@ class TaskPipeline(
         }
 
         // ---------- 2. TERMS ----------
+        AppLogger.log(context, "PIPELINE", "stage=TERMS task=${task.id}")
         if (config.videoTerms.isEmpty() && config.videoSource != VideoSource.LOCAL && config.videoMaterials.isEmpty()) {
             update(task.id, TaskStatus.RUNNING, Stage.TERMS, 12, "generating search terms")
             checkCancel()
@@ -135,6 +165,7 @@ class TaskPipeline(
         }
 
         // ---------- 3. MATERIALS ----------
+        AppLogger.log(context, "PIPELINE", "stage=MATERIALS task=${task.id}")
         val materials: List<MaterialInfo> = if (config.videoMaterials.isNotEmpty()) {
             update(task.id, TaskStatus.RUNNING, Stage.MATERIALS, 25, "using ${config.videoMaterials.size} pre-selected materials")
             config.videoMaterials
@@ -142,14 +173,14 @@ class TaskPipeline(
             update(task.id, TaskStatus.RUNNING, Stage.MATERIALS, 20, "searching stock media")
             checkCancel()
             val keys = prefs.stockKeys()
-            val stock = StockMediaClient(http)
+            val stock = StockMediaClient(http, cacheDir = File(context.cacheDir, "mpt-material-cache"))
             val results = mutableListOf<MaterialInfo>()
             val perTerm = ((40 - 20) / config.videoTerms.size.coerceAtLeast(1))
             var p = 20
             for ((i, term) in config.videoTerms.withIndex()) {
                 checkCancel()
                 try {
-                    val vids = stock.search(config.videoSource.vValue, keyFor(config.videoSource, keys), term, config.videoAspect.value, 5)
+                    val vids = stock.searchCached(config.videoSource.vValue, keyFor(config.videoSource, keys), term, config.videoAspect.value, 8)
                     vids.forEach { v ->
                         results += MaterialInfo(
                             provider = config.videoSource.vValue, url = v.url, duration = v.durationSec,
@@ -167,6 +198,7 @@ class TaskPipeline(
         }
 
         // ---------- 4. AUDIO ----------
+        AppLogger.log(context, "PIPELINE", "stage=AUDIO task=${task.id}")
         update(task.id, TaskStatus.RUNNING, Stage.AUDIO, 40, "generating voiceover")
         checkCancel()
         val audioFile: File?
@@ -174,8 +206,11 @@ class TaskPipeline(
         if (config.customAudioFile != null) {
             audioFile = File(config.customAudioFile!!)
             if (!audioFile.exists()) throw Exception("custom audio file missing: ${config.customAudioFile}")
+        } else if (config.voiceName.isBlank()) {
+            audioFile = composer.silentAudio((config.videoClipDuration.coerceAtLeast(1) * config.videoCount.coerceAtLeast(1)).toDouble())
+            words = emptyList()
         } else {
-            val tts = TtsService(http)
+            val tts = TtsService(http, prefs)
             val voiceOut = File(dir, "audio.mp3")
             val r = tts.synthesize(config.voiceName, config.videoScript, config.voiceRate, config.voiceVolume, voiceOut)
             audioFile = r.file
@@ -185,33 +220,45 @@ class TaskPipeline(
         update(task.id, TaskStatus.RUNNING, Stage.AUDIO, 50, "voiceover ready (${audioDuration.toInt()}s)")
 
         // ---------- 5. SUBTITLE ----------
+        AppLogger.log(context, "PIPELINE", "stage=SUBTITLE task=${task.id}")
         var srtFile: File? = null
         if (config.subtitleEnabled) {
-            update(task.id, TaskStatus.RUNNING, Stage.SUBTITLE, 50, "building subtitles from TTS word boundaries")
+            val subtitleProvider = prefs.settingsNow().subtitleProvider
+            update(task.id, TaskStatus.RUNNING, Stage.SUBTITLE, 50, "subtitle provider=${subtitleProvider.name.lowercase()}")
             checkCancel()
-            val cues = when {
-                words.isNotEmpty() && config.subtitleDisplayMode == SubtitleDisplayMode.WORD_BY_WORD ->
-                    SubtitleBuilder.wordByWord(words)
-                words.isNotEmpty() -> SubtitleBuilder.sentences(words)
-                else -> SubtitleBuilder.grouped(emptyList()) // custom audio: no boundaries
+            var cues: List<Cue> = emptyList()
+            if (subtitleProvider == SubtitleProvider.WHISPER_OPENAI_COMPATIBLE) {
+                // Whisper works directly on custom audio too, matching upstream's intended behavior.
+                // It is an explicit API adapter here; no fake local model is bundled into the APK.
+                cues = try {
+                    WhisperClient(http, prefs).transcribe(audioFile).let { Srt.fromSegments(it) }
+                } catch (e: Exception) {
+                    AppLogger.exception(context, "WHISPER", "transcription failed; falling back to available timing", e)
+                    emptyList()
+                }
+            } else {
+                cues = when {
+                    words.isNotEmpty() && config.subtitleDisplayMode == SubtitleDisplayMode.WORD_BY_WORD -> SubtitleBuilder.wordByWord(words)
+                    words.isNotEmpty() -> SubtitleBuilder.sentences(words)
+                    else -> emptyList()
+                }
             }
             if (cues.isEmpty()) {
-                // Equal-segment estimation for custom audio (documented fallback)
-                val segments = config.videoScript.split(Regex("[.。!！?？\n]+")).filter { it.isNotBlank() }
+                // Safe fallback when the selected provider is unavailable or TTS has no word timings.
+                val segments = config.videoScript.split(Regex("[.。!！?？\n]+" )).filter { it.isNotBlank() }
                 val segDur = audioDuration / segments.size.coerceAtLeast(1)
                 var t = 0.0
-                val est = segments.map { seg ->
+                cues = segments.map { seg ->
                     val c = Cue((t * 1000).toLong(), ((t + segDur) * 1000).toLong(), seg.trim())
-                    t += segDur; c
+                    t += segDur
+                    c
                 }
-                srtFile = File(dir, "subtitle.srt").also { it.writeText(Srt.write(est)) }
-            } else {
-                srtFile = File(dir, "subtitle.srt").also { it.writeText(Srt.write(cues)) }
             }
+            srtFile = File(dir, "subtitle.srt").also { it.writeText(Srt.write(cues)) }
             update(task.id, TaskStatus.RUNNING, Stage.SUBTITLE, 60, "subtitle cues: ${cues.size}")
         }
-
         // ---------- 6. COMBINE ----------
+        AppLogger.log(context, "PIPELINE", "stage=COMBINE task=${task.id}")
         update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 60, "composing video")
         checkCancel()
         val (w, h) = config.videoAspect.width to config.videoAspect.height
@@ -231,13 +278,33 @@ class TaskPipeline(
             if (material.localPath != null) {
                 local = File(material.localPath)
             } else {
-                local = File(dir, "material_$i.${if (isImage) "jpg" else "mp4"}")
-                update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 60 + (i * 15 / sceneCount), "downloading material ${i + 1}/$sceneCount")
-                downloadClient.newCall(
-                    okhttp3.Request.Builder().url(material.url).build()
-                ).execute().use { resp ->
-                    if (!resp.isSuccessful) throw Exception("material download failed: HTTP ${resp.code}")
-                    resp.body!!.byteStream().use { input -> local.outputStream().use { input.copyTo(it) } }
+                update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 60 + (i * 15 / sceneCount), "loading material ${i + 1}/$sceneCount")
+                if (material.provider in setOf("pexels", "pixabay", "coverr")) {
+                    val stock = StockMediaClient(downloadClient, cacheDir = File(context.cacheDir, "mpt-material-cache"))
+                    val cached = stock.downloadCached(
+                        StockMediaClient.StockVideo(
+                            provider = material.provider,
+                            id = material.url.hashCode().toString(),
+                            url = material.url,
+                            width = w,
+                            height = h,
+                            durationSec = material.duration,
+                            creator = material.creator,
+                            creatorUrl = material.creatorUrl,
+                        )
+                    )
+                    local = File(dir, "material_$i.${cached.extension.ifBlank { if (isImage) "jpg" else "mp4" }}")
+                    if (!local.exists() || local.length() != cached.length()) cached.copyTo(local, overwrite = true)
+                    AppLogger.log(context, "MATERIAL", "cache hit/download provider=${material.provider} index=$i bytes=${local.length()}")
+                } else {
+                    local = File(dir, "material_$i.${if (isImage) "jpg" else "mp4"}")
+                    val started = System.currentTimeMillis()
+                    AppLogger.network(context, "GET", material.url)
+                    downloadClient.newCall(okhttp3.Request.Builder().url(material.url).build()).execute().use { resp ->
+                        AppLogger.network(context, "GET", material.url, resp.code, System.currentTimeMillis() - started)
+                        if (!resp.isSuccessful) throw Exception("material download failed: HTTP ${resp.code}")
+                        resp.body!!.byteStream().use { input -> local.outputStream().use { input.copyTo(it) } }
+                    }
                 }
             }
             downloaded += local to isImage
@@ -264,7 +331,7 @@ class TaskPipeline(
         var current = composer.concat(ordered)
 
         update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 92, "mixing audio")
-        current = composer.muxAudio(current, if (config.customAudioFile == null) audioFile else null, bgmFile(context, config), config.bgmVolume)
+        current = applyBackgroundMusic(task.id, current, audioFile, config, composer, dir, 0)
 
         if (srtFile != null) {
             update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 95, "burning subtitles")
@@ -279,17 +346,85 @@ class TaskPipeline(
             current = composer.burnSubtitles(current, srtFile, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
         }
 
-        update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 98, "finalizing")
-        val final = File(dir, "final.mp4")
-        current.renameTo(final)
-        update(task.id, TaskStatus.RUNNING, Stage.DONE, 99, "video ready: ${final.name}")
-        return final
+        update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 98, "finalizing ${config.videoCount} output(s)")
+        val outputs = mutableListOf<File>()
+        val count = config.videoCount.coerceIn(1, 10)
+        if (count == 1) {
+            val final = File(dir, "final.mp4")
+            if (current.absolutePath != final.absolutePath) {
+                if (!current.renameTo(final)) current.copyTo(final, overwrite = true)
+            }
+            outputs += final
+        } else {
+            for (index in 0 until count) {
+                checkCancel()
+                val final = File(dir, "final_${index + 1}.mp4")
+                if (!current.renameTo(final)) current.copyTo(final, overwrite = true)
+                outputs += final
+                if (index != count - 1) {
+                    // Re-run the same source composition for additional outputs with a stable,
+                    // different ordering. This keeps video_count functional rather than merely
+                    // accepting the setting in the UI.
+                    val reordered = scenes.shuffled(kotlin.random.Random(task.id.hashCode() + index + 1))
+                    current = composer.concat(reordered)
+                    current = applyBackgroundMusic(task.id, current, audioFile, config, composer, dir, index + 1)
+                    if (srtFile != null) {
+                        val fontName = config.fontName.ifBlank { FontManager.DEFAULT_FONT }
+                        val style = SubtitleStyle.Style(
+                            fontName = fontName, fontSize = config.fontSize, videoWidth = w, videoHeight = h,
+                            position = config.subtitlePosition.vValue, customPosition = config.customPosition,
+                            foreColor = config.textForeColor, backColor = config.textBackgroundColor,
+                            strokeColor = config.strokeColor, strokeWidth = config.strokeWidth,
+                        )
+                        current = composer.burnSubtitles(current, srtFile, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
+                    }
+                }
+            }
+        }
+        update(task.id, TaskStatus.RUNNING, Stage.DONE, 99, "video ready: ${outputs.size} output(s)")
+        AppLogger.log(context, "PIPELINE", "complete task=${task.id} outputs=${outputs.joinToString { it.absolutePath }}")
+        return PipelineResult(outputs.first(), outputs)
+    }
+
+    private suspend fun applyBackgroundMusic(
+        taskId: String,
+        video: File,
+        audioFile: File,
+        config: TaskConfig,
+        composer: MediaComposer,
+        dir: File,
+        outputIndex: Int,
+    ): File {
+        checkCancel()
+        if (config.bgmType != BgmType.SONILO) {
+            return composer.muxAudio(video, audioFile, bgmFile(context, config), config.bgmVolume)
+        }
+        // Sonilo analyzes the completed visual composition plus voice, then returns music.
+        val voiceVideo = composer.muxAudio(video, audioFile, null, config.bgmVolume)
+        checkCancel()
+        update(taskId, TaskStatus.RUNNING, Stage.COMBINE, 94, "preparing Sonilo music analysis video")
+        val proxy = composer.makeSoniloProxy(voiceVideo)
+        return try {
+            update(taskId, TaskStatus.RUNNING, Stage.COMBINE, 95, "generating Sonilo background music")
+            val soniloAudio = SoniloClient(context, prefs).generateBgm(
+                proxy, config.soniloBgmPrompt, File(dir, "sonilo-${outputIndex}.m4a")
+            )
+            composer.muxAudio(voiceVideo, null, soniloAudio, config.bgmVolume)
+        } finally {
+            proxy.delete()
+        }
     }
 
     private fun pickMaterial(list: List<MaterialInfo>, index: Int, mode: ConcatMode): MaterialInfo {
         val src = list.filter { m -> m.url.isNotBlank() || m.localPath != null }
+            .distinctBy { it.localPath ?: it.url }
         if (src.isEmpty()) throw Exception("no usable materials")
-        return if (mode == ConcatMode.RANDOM) src.random() else src[index % src.size]
+        // Prefer an unused candidate while enough material exists. This mirrors the
+        // upstream engine's de-duplication before it starts reusing clips.
+        val unique = if (index < src.size) src[index] else null
+        if (mode == ConcatMode.SEQUENTIAL) return unique ?: src[index % src.size]
+        if (unique != null) return unique
+        return src.random(kotlin.random.Random(index * 9973 + src.size))
     }
 
     private fun keyFor(source: VideoSource, keys: StockKeys): String = when (source) {
@@ -315,6 +450,7 @@ class TaskPipeline(
             }
             out
         }
+        BgmType.SONILO -> null
         BgmType.RANDOM -> {
             val assets = context.assets.list("songs") ?: emptyArray()
             if (assets.isEmpty()) null

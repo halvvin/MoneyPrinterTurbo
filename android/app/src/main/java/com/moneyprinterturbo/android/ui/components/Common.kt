@@ -50,6 +50,7 @@ fun StatusChip(status: Int, progress: Int) {
         4 -> stringResource(R.string.status_running) to MaterialTheme.colorScheme.primary
         1 -> stringResource(R.string.status_completed) to MaterialTheme.colorScheme.tertiary
         -1 -> stringResource(R.string.status_failed) to MaterialTheme.colorScheme.error
+        -2 -> "Cancelled" to MaterialTheme.colorScheme.outline
         else -> stringResource(R.string.status_queued) to MaterialTheme.colorScheme.secondary
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

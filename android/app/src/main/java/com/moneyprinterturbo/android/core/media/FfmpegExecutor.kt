@@ -1,5 +1,7 @@
 package com.moneyprinterturbo.android.core.media
 
+import com.moneyprinterturbo.android.core.logging.AppLogger
+
 import android.content.Context
 import java.io.File
 
@@ -54,6 +56,16 @@ class FfmpegExecutor(private val context: Context) {
 
     class FfmpegException(message: String) : Exception(message)
 
+    @Volatile private var activeProcess: Process? = null
+
+    /** Immediately terminate the currently running FFmpeg process, if any. */
+    fun cancelActiveProcess() {
+        val p = activeProcess ?: return
+        AppLogger.log(context, "FFMPEG", "cancellation requested")
+        try { p.destroy() } catch (_: Exception) {}
+        try { if (p.isAlive) p.destroyForcibly() } catch (_: Exception) {}
+    }
+
     data class Run(val exitCode: Int, val stdout: String, val stderr: String) {
         val success get() = exitCode == 0
     }
@@ -72,10 +84,12 @@ class FfmpegExecutor(private val context: Context) {
         val workDir = File(context.cacheDir, "ffmpeg-cwd").apply { mkdirs() }
         val proc: Process
         try {
+            AppLogger.log(context, "FFMPEG", "start args=${args.take(8).joinToString(" ")}${if (args.size > 8) " …" else ""}")
             proc = ProcessBuilder(listOf(binary.absolutePath) + args)
                 .directory(workDir)
                 .redirectErrorStream(false)
                 .start()
+            activeProcess = proc
         } catch (e: Exception) {
             throw FfmpegException("failed to launch ffmpeg: ${e.message}")
         }
@@ -105,12 +119,14 @@ class FfmpegExecutor(private val context: Context) {
         try {
             val exit = proc.waitFor()
             tOut.join(5_000); tErr.join(5_000)
+            AppLogger.log(context, "FFMPEG", "exit=$exit")
             if (exit != 0) {
                 val tail = synchronized(errSb) { errSb.toString() }.trim().lines().takeLast(8).joinToString("\n")
                 throw FfmpegException("ffmpeg failed (exit $exit):\n$tail")
             }
             return Run(exit, synchronized(outSb) { outSb.toString() }, synchronized(errSb) { errSb.toString() })
         } finally {
+            if (activeProcess === proc) activeProcess = null
             proc.destroy()
             tmp.delete()
         }

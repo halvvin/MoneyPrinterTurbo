@@ -32,11 +32,16 @@ class MediaComposer(
         val out = File(tmpDir, "scene_${System.nanoTime()}.mp4")
         val fit = FfmpegExecutor.fitFilter(fitMode, width, height)
         val speed = if (clipSpeed != 1.0f) ",setpts=PTS/${clipSpeed}" else ""
-        val fade = if (transition == "FADE") {
-            val d = durationSec / clipSpeed
-            ",fade=t=in:st=0:d=0.5,fade=t=out:st=${(d - 0.5).coerceAtLeast(0.0)}:d=0.5"
-        } else ""
-        val vf = "$fit$speed,fps=$fps$fade,format=yuv420p"
+        val transitionFilter = when (transition) {
+            "FADE" -> {
+                val d = durationSec / clipSpeed
+                ",fade=t=in:st=0:d=0.5,fade=t=out:st=${(d - 0.5).coerceAtLeast(0.0)}:d=0.5"
+            }
+            "ZOOM" -> ",zoompan=z='min(zoom+0.0015,1.08)':d=1:s=${width}x${height}:fps=${fps}"
+            "SLIDE" -> ",crop=${width}:${height}:x='if(eq(mod(n,2),0),0,iw-${width})':y='(ih-${height})/2'"
+            else -> ""
+        }
+        val vf = "$fit$speed,fps=$fps$transitionFilter,format=yuv420p"
         val args = if (isImage) {
             listOf("-loop", "1", "-t", fmt(durationSec), "-i", source.absolutePath,
                 "-vf", vf, "-r", fps.toString(),
@@ -92,6 +97,20 @@ class MediaComposer(
             out.absolutePath,
         )
         ffmpeg.run(args, duration)
+        return out
+    }
+
+    /** Create a lightweight Sonilo analysis proxy: max 1280px, no audio, fast H.264. */
+    fun makeSoniloProxy(video: File): File {
+        val out = File(tmpDir, "sonilo_proxy_${System.nanoTime()}.mp4")
+        val duration = probeDuration(video)
+        ffmpeg.run(
+            listOf("-y", "-hide_banner", "-i", video.absolutePath,
+                "-vf", "scale=w=1280:h=1280:force_original_aspect_ratio=decrease",
+                "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "30",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart", out.absolutePath),
+            duration,
+        )
         return out
     }
 

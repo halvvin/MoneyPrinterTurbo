@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference
  * - Output: MP3 audio + WordBoundary metadata (100-ns units) used for subtitles
  */
 class EdgeTtsClient(private val http: OkHttpClient) {
+    private val logTag = "EDGE_TTS"
 
     companion object {
         const val TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
@@ -72,6 +73,8 @@ class EdgeTtsClient(private val http: OkHttpClient) {
     /** Synthesize one text chunk. Throws EdgeTtsException on failure with a human-readable message. */
     suspend fun synthesize(voice: String, text: String, rate: Float = 1.0f, volume: Float = 1.0f): Result =
         withContext(Dispatchers.IO) {
+            val started = System.currentTimeMillis()
+            com.moneyprinterturbo.android.core.logging.AppLogger.logCtx(logTag, "start voice=$voice chars=${text.length} rate=$rate volume=$volume")
             val audio = mutableListOf<ByteString>()
             val words = mutableListOf<WordBoundary>()
             val error = AtomicReference<String?>(null)
@@ -89,6 +92,7 @@ class EdgeTtsClient(private val http: OkHttpClient) {
                 private var sentSsml = false
 
                 override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
+                    com.moneyprinterturbo.android.core.logging.AppLogger.logCtx(logTag, "socket_open code=${response.code}")
                     val requestId = java.util.UUID.randomUUID().toString().replace("-", "")
                     val config =
                         "X-Timestamp:${dateStamp()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
@@ -133,6 +137,7 @@ class EdgeTtsClient(private val http: OkHttpClient) {
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
+                    com.moneyprinterturbo.android.core.logging.AppLogger.exceptionCtx(logTag, "socket_failure code=${response?.code}", t)
                     val code = response?.code
                     error.set(
                         when (code) {
@@ -160,6 +165,7 @@ class EdgeTtsClient(private val http: OkHttpClient) {
             }
             error.get()?.let { throw EdgeTtsException(it) }
             if (audio.isEmpty()) throw EdgeTtsException("edge-tts returned no audio for the given text")
+            com.moneyprinterturbo.android.core.logging.AppLogger.logCtx(logTag, "complete bytes=${audio.sumOf { it.size }} words=${words.size} elapsedMs=${System.currentTimeMillis() - started}")
             val buf = java.io.ByteArrayOutputStream()
             audio.forEach { buf.write(it.toByteArray()) }
             Result(buf.toByteArray(), words)

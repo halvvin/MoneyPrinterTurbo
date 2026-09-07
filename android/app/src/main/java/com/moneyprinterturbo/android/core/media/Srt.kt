@@ -28,6 +28,16 @@ object Srt {
 
     private val TS = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
 
+
+    /** Convert Whisper/OpenAI verbose_json segments into stable SRT cues. */
+    fun fromSegments(segments: List<WhisperSegment>): List<Cue> =
+        segments.mapNotNull { seg ->
+            val start = (seg.start * 1000.0).toLong().coerceAtLeast(0)
+            val end = (seg.end * 1000.0).toLong().coerceAtLeast(start + 1)
+            val text = seg.text.trim()
+            if (text.isBlank()) null else Cue(start, end, text)
+        }
+
     fun parse(content: String): List<Cue> {
         val cues = mutableListOf<Cue>()
         val blocks = content.replace("\r\n", "\n").split(Regex("\n\n+"))
@@ -52,6 +62,8 @@ object Srt {
 }
 
 /** One recognized word from edge-tts audio.metadata (100-ns units). */
+data class WhisperSegment(val start: Double, val end: Double, val text: String)
+
 data class WordBoundary(val offset100ns: Long, val duration100ns: Long, val text: String) {
     val startMs: Long get() = offset100ns / 10_000
     val endMs: Long get() = (offset100ns + duration100ns) / 10_000

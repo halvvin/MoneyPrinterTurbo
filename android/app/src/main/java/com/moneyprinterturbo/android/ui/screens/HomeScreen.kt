@@ -34,10 +34,14 @@ fun HomeScreen(nav: NavController) {
     var settings by remember { mutableStateOf(AppSettings()) }
 
     LaunchedEffect(Unit) {
-        tasks = app.repository.tasks()
-        projects = app.repository.projects()
-        app.prefs.settings.collect { settings = it }
+        while (true) {
+            tasks = app.repository.tasks()
+            projects = app.repository.projects()
+            if (tasks.none { it.status == 4 }) break
+            kotlinx.coroutines.delay(2000)
+        }
     }
+    LaunchedEffect(Unit) { app.prefs.settings.collect { settings = it } }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {

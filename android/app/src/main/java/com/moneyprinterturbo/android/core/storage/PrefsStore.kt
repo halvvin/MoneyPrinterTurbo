@@ -28,7 +28,35 @@ class PrefsStore(private val context: Context, private val secure: SecureStore) 
     }
 
     suspend fun updateSettings(s: AppSettings) {
-        context.dataStore.edit { it[stringPreferencesKey("app_settings")] = json.encodeToString(s) }
+        // Remote bearer tokens are secrets: keep them in Android Keystore-backed SecureStore,
+        // never in the DataStore JSON or diagnostic exports.
+        if (s.remoteApiToken.isNotBlank()) secure.put("remote_api_token", s.remoteApiToken.trim())
+        val sanitized = s.copy(remoteApiToken = "")
+        context.dataStore.edit { it[stringPreferencesKey("app_settings")] = json.encodeToString(sanitized) }
+    }
+
+    suspend fun remoteApiTokenNow(): String = secure.get("remote_api_token") ?: ""
+
+    suspend fun saveRemoteApiToken(token: String) {
+        secure.put("remote_api_token", token.trim())
+    }
+
+    suspend fun ttsApiKeyNow(): String = secure.get("tts_api_key") ?: ""
+
+    suspend fun saveTtsApiKey(key: String) {
+        secure.put("tts_api_key", key.trim())
+    }
+
+    suspend fun whisperApiKeyNow(): String = secure.get("whisper_api_key") ?: ""
+
+    suspend fun saveWhisperApiKey(key: String) {
+        secure.put("whisper_api_key", key.trim())
+    }
+
+    suspend fun soniloApiKeyNow(): String = secure.get("sonilo_api_key") ?: ""
+
+    suspend fun saveSoniloApiKey(key: String) {
+        secure.put("sonilo_api_key", key.trim())
     }
 
     suspend fun settingsNow(): AppSettings = settings.first()

@@ -6,6 +6,8 @@ import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import android.content.Context
@@ -43,6 +45,8 @@ data class TaskEntity(
     val videoPath: String? = null,
     val configJson: String,
     val log: String = "",                       // rolling execution log
+    val outputPathsJson: String = "[]",          // all generated output files
+    val remoteTaskId: String? = null,              // backend task id when REMOTE mode is used
 )
 
 @Dao
@@ -83,27 +87,46 @@ interface TaskDao {
     @Query("UPDATE tasks SET error = :error, status = -1, updatedAt = :now WHERE id = :id")
     suspend fun markFailed(id: String, error: String, now: Long)
 
-    @Query("UPDATE tasks SET videoPath = :path, status = 1, progress = 100, stage = 'DONE', updatedAt = :now, finishedAt = :now WHERE id = :id")
-    suspend fun markComplete(id: String, path: String, now: Long)
+    @Query("UPDATE tasks SET videoPath = :path, outputPathsJson = :outputPathsJson, status = 1, progress = 100, stage = 'DONE', updatedAt = :now, finishedAt = :now WHERE id = :id")
+    suspend fun markComplete(id: String, path: String, outputPathsJson: String, now: Long)
 
     @Query("UPDATE tasks SET log = substr(COALESCE(log, '') || :line, -16000), updatedAt = :now WHERE id = :id")
     suspend fun appendLog(id: String, line: String, now: Long)
 
+    @Query("UPDATE tasks SET remoteTaskId = :remoteId, updatedAt = :now WHERE id = :id")
+    suspend fun setRemoteTaskId(id: String, remoteId: String, now: Long)
+
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM tasks WHERE projectId = :projectId")
+    suspend fun deleteForProject(projectId: String)
 }
 
-@Database(entities = [ProjectEntity::class, TaskEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ProjectEntity::class, TaskEntity::class], version = 3, exportSchema = false)
 abstract class MptDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun taskDao(): TaskDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tasks ADD COLUMN outputPathsJson TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tasks ADD COLUMN remoteTaskId TEXT")
+            }
+        }
+
         @Volatile private var instance: MptDatabase? = null
 
         fun get(context: Context): MptDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(context, MptDatabase::class.java, "mpt.db")
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .build().also { instance = it }
             }

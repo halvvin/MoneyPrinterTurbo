@@ -1,5 +1,7 @@
 package com.moneyprinterturbo.android.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +18,7 @@ import com.moneyprinterturbo.android.MptApplication
 import com.moneyprinterturbo.android.R
 import com.moneyprinterturbo.android.core.db.DbJson
 import com.moneyprinterturbo.android.core.llm.LlmService
+import com.moneyprinterturbo.android.core.logging.AppLogger
 import com.moneyprinterturbo.android.core.media.StockMediaClient
 import com.moneyprinterturbo.android.core.model.*
 import com.moneyprinterturbo.android.core.tts.TtsService
@@ -26,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 
 /**
  * Video creation — full parity with the upstream WebUI form:
@@ -47,6 +51,40 @@ fun CreateScreen(nav: NavController) {
     var showVoicePicker by remember { mutableStateOf(false) }
 
     fun set(c: TaskConfig) { config = c }
+
+    fun importUri(uri: android.net.Uri, folder: String): String? = try {
+        val resolver = app.contentResolver
+        val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        } ?: "import_${UUID.randomUUID()}"
+        val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val dir = File(app.getExternalFilesDir(null) ?: app.filesDir, "imports/$folder").apply { mkdirs() }
+        val out = File(dir, "${UUID.randomUUID()}_$safe")
+        val copied = resolver.openInputStream(uri)?.use { input -> out.outputStream().use { input.copyTo(it) } }
+        if (copied == null) {
+            AppLogger.log(app, "IMPORT", "no stream for $uri")
+            null
+        } else out.absolutePath
+    } catch (e: Exception) {
+        AppLogger.log(app, "IMPORT", "failed folder=$folder error=${e.message}")
+        null
+    }
+
+    val localMediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val paths = uris.mapNotNull { importUri(it, "media") }
+        if (paths.isNotEmpty()) {
+            set(config.copy(videoSource = VideoSource.LOCAL, videoMaterials = config.videoMaterials + paths.map { MaterialInfo(provider = "local", localPath = it) }))
+            info = "Imported ${paths.size} local media file(s)."
+        }
+    }
+    val customAudioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        importUri(uri, "audio")?.let { set(config.copy(customAudioFile = it)); info = "Custom audio selected." }
+    }
+    val bgmPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        importUri(uri, "bgm")?.let { set(config.copy(bgmType = BgmType.CUSTOM, bgmFile = it)); info = "Custom BGM selected." }
+    }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item { Text(stringResource(R.string.new_video), style = MaterialTheme.typography.headlineSmall) }
@@ -152,6 +190,18 @@ fun CreateScreen(nav: NavController) {
                     config.videoSource.vValue,
                 ) { set(config.copy(videoSource = VideoSource.from(it))) }
                 Spacer(Modifier.height(8.dp))
+                if (config.videoSource == VideoSource.LOCAL) {
+                    OutlinedButton(onClick = { localMediaPicker.launch(arrayOf("video/*", "image/*")) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Select local video/images")
+                    }
+                    config.videoMaterials.forEachIndexed { index, material ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(material.localPath?.substringAfterLast('/') ?: "local media", Modifier.weight(1f))
+                            TextButton(onClick = { set(config.copy(videoMaterials = config.videoMaterials.filterIndexed { i, _ -> i != index })) }) { Text("Remove") }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 DropdownField(
                     stringResource(R.string.aspect),
                     listOf("9:16", "16:9", "1:1"), config.videoAspect.value,
@@ -173,7 +223,16 @@ fun CreateScreen(nav: NavController) {
         item {
             SectionCard(stringResource(R.string.section_voice)) {
                 OutlinedButton(onClick = { showVoicePicker = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.voice) + ": " + config.voiceName)
+                    Text(stringResource(R.string.voice) + ": " + config.voiceName.ifBlank { "No voice" })
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { set(config.copy(voiceName = "")) }) { Text("No voice") }
+                    OutlinedButton(onClick = { customAudioPicker.launch(arrayOf("audio/*")) }) { Text("Custom audio") }
+                }
+                config.customAudioFile?.let { path ->
+                    Text("Audio: ${path.substringAfterLast('/')}", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { set(config.copy(customAudioFile = null)) }) { Text("Remove custom audio") }
                 }
                 Spacer(Modifier.height(8.dp))
                 SliderField(stringResource(R.string.voice_rate), config.voiceRate, 0.5f..2.0f) {
@@ -206,6 +265,15 @@ fun CreateScreen(nav: NavController) {
                 NumberField(stringResource(R.string.font_size), config.fontSize) { set(config.copy(fontSize = it)) }
                 Spacer(Modifier.height(8.dp))
                 ColorField(stringResource(R.string.text_color), config.textForeColor) { set(config.copy(textForeColor = it)) }
+                Spacer(Modifier.height(8.dp))
+                ColorField("Subtitle background", config.textBackgroundColor) { set(config.copy(textBackgroundColor = it)) }
+                Spacer(Modifier.height(8.dp))
+                ColorField("Subtitle stroke", config.strokeColor) { set(config.copy(strokeColor = it)) }
+                NumberField("Stroke width", config.strokeWidth.toInt()) { set(config.copy(strokeWidth = it.coerceIn(0, 20).toFloat())) }
+                LabeledSwitch("Rounded subtitle background", config.roundedSubtitleBackground) { set(config.copy(roundedSubtitleBackground = it)) }
+                if (config.subtitlePosition == SubtitlePosition.CUSTOM) {
+                    SliderField("Custom position", config.customPosition, 0f..100f) { set(config.copy(customPosition = it)) }
+                }
             }
         }
 
@@ -213,11 +281,25 @@ fun CreateScreen(nav: NavController) {
         item {
             SectionCard(stringResource(R.string.section_bgm)) {
                 DropdownField(
-                    "BGM", listOf("none", "random", "preset"), config.bgmType.vValue,
+                    "BGM", listOf("none", "random", "preset", "custom", "sonilo"), config.bgmType.vValue,
                 ) { set(config.copy(bgmType = BgmType.from(it))) }
                 if (config.bgmType == BgmType.PRESET) {
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextFieldMpt(config.bgmFile, { set(config.copy(bgmFile = it)) }, "song file (output001.mp3 …)")
+                    OutlinedTextFieldMpt(config.bgmFile, { set(config.copy(bgmFile = it)) }, "Bundled song file")
+                }
+                if (config.bgmType == BgmType.SONILO) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextFieldMpt(
+                        config.soniloBgmPrompt,
+                        { set(config.copy(soniloBgmPrompt = it.take(2000))) },
+                        "Sonilo music prompt (optional)",
+                        supporting = "Leave empty to let Sonilo match the video automatically.",
+                    )
+                }
+                if (config.bgmType == BgmType.CUSTOM) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { bgmPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Select custom BGM") }
+                    if (config.bgmFile.isNotBlank()) Text("BGM: ${config.bgmFile.substringAfterLast('/')}", style = MaterialTheme.typography.bodySmall)
                 }
                 Spacer(Modifier.height(8.dp))
                 SliderField(stringResource(R.string.bgm_volume), config.bgmVolume, 0f..1f) {
@@ -239,8 +321,13 @@ fun CreateScreen(nav: NavController) {
                 Spacer(Modifier.height(8.dp))
                 DropdownField(
                     stringResource(R.string.transition),
-                    listOf("none", "fade"), config.videoTransition.name.lowercase(),
-                ) { set(config.copy(videoTransition = if (it == "fade") Transition.FADE else Transition.NONE)) }
+                    listOf("none", "fade", "slide", "zoom"), config.videoTransition.name.lowercase(),
+                ) { set(config.copy(videoTransition = when (it) { "fade" -> Transition.FADE; "slide" -> Transition.SLIDE; "zoom" -> Transition.ZOOM; else -> Transition.NONE })) }
+                SliderField("Clip speed", config.videoClipSpeed, 0.5f..2.0f) { set(config.copy(videoClipSpeed = it)) }
+                NumberField("Paragraphs", config.paragraphNumber) { set(config.copy(paragraphNumber = it.coerceIn(1, 10))) }
+                NumberField("Render threads", config.nThreads) { set(config.copy(nThreads = it.coerceIn(1, 16))) }
+                OutlinedTextFieldMpt(config.videoScriptPrompt, { set(config.copy(videoScriptPrompt = it)) }, "Custom script prompt", minLines = 2, singleLine = false)
+                OutlinedTextFieldMpt(config.customSystemPrompt, { set(config.copy(customSystemPrompt = it)) }, "Custom system prompt", minLines = 2, singleLine = false)
             }
         }
 

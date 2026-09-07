@@ -2,6 +2,10 @@ package com.moneyprinterturbo.android.core.media
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.security.MessageDigest
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -11,8 +15,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /** Stock video search — parity with upstream app/services/material.py (Pexels / Pixabay / Coverr). */
-class StockMediaClient(private val http: OkHttpClient, private val json: Json = Json { ignoreUnknownKeys = true }) {
+class StockMediaClient(
+    private val http: OkHttpClient,
+    private val json: Json = Json { ignoreUnknownKeys = true },
+    private val cacheDir: File? = null,
+) {
 
+    @Serializable
     data class StockVideo(
         val provider: String,
         val id: String,
@@ -26,6 +35,61 @@ class StockMediaClient(private val http: OkHttpClient, private val json: Json = 
     )
 
     class StockException(message: String) : Exception(message)
+
+    /**
+     * Persistent search cache and downloaded-material cache. The upstream project
+     * caches search results and reuses downloaded files; Android does the same here
+     * so a retry does not hammer the provider or redownload identical media.
+     */
+    private val searchCacheDir: File? = cacheDir?.resolve("material-search")?.apply { mkdirs() }
+    private val downloadCacheDir: File? = cacheDir?.resolve("material-downloads")?.apply { mkdirs() }
+
+    private fun cacheKey(provider: String, term: String, aspect: String): String =
+        sha256("$provider|$aspect|${term.trim().lowercase()}")
+
+    private fun sha256(value: String): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        return md.digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    suspend fun searchCached(
+        provider: String, apiKey: String, term: String, aspect: String, count: Int,
+        maxAgeMs: Long = 24L * 60L * 60L * 1000L,
+    ): List<StockVideo> {
+        val file = searchCacheDir?.resolve("${cacheKey(provider, term, aspect)}.json")
+        if (file != null && file.exists() && System.currentTimeMillis() - file.lastModified() < maxAgeMs) {
+            try {
+                return json.decodeFromString(file.readText())
+            } catch (_: Exception) {
+                file.delete()
+            }
+        }
+        val result = search(provider, apiKey, term, aspect, count)
+        if (result.isNotEmpty() && file != null) {
+            try { file.writeText(json.encodeToString(result)) } catch (_: Exception) {}
+        }
+        return result
+    }
+
+    suspend fun downloadCached(video: StockVideo): File = withContext(Dispatchers.IO) {
+        val dir = downloadCacheDir ?: throw StockException("material cache directory is unavailable")
+        val ext = if (video.url.substringBefore('?').lowercase().endsWith(".jpg") ||
+            video.url.substringBefore('?').lowercase().endsWith(".jpeg") ||
+            video.url.substringBefore('?').lowercase().endsWith(".png") ||
+            video.url.substringBefore('?').lowercase().endsWith(".webp")) "jpg" else "mp4"
+        val file = dir.resolve("${sha256(video.url)}.$ext")
+        if (file.exists() && file.length() > 0) return@withContext file
+        val tmp = dir.resolve(".${file.name}.part")
+        val req = Request.Builder().url(video.url).header("User-Agent", "MoneyPrinterTurbo-Android").build()
+        http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw StockException("material download HTTP ${resp.code}")
+            val body = resp.body ?: throw StockException("empty material response")
+            body.byteStream().use { input -> tmp.outputStream().use { output -> input.copyTo(output) } }
+        }
+        if (tmp.length() <= 0) { tmp.delete(); throw StockException("downloaded material is empty") }
+        if (!tmp.renameTo(file)) { tmp.copyTo(file, overwrite = true); tmp.delete() }
+        file
+    }
 
     suspend fun search(provider: String, apiKey: String, term: String, aspect: String, count: Int): List<StockVideo> =
         when (provider.lowercase()) {

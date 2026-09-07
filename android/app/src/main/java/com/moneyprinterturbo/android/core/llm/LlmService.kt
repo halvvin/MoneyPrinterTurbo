@@ -3,6 +3,7 @@ package com.moneyprinterturbo.android.core.llm
 import com.moneyprinterturbo.android.core.model.AppSettings
 import com.moneyprinterturbo.android.core.model.LlmKind
 import com.moneyprinterturbo.android.core.model.LlmProvider
+import com.moneyprinterturbo.android.core.logging.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json

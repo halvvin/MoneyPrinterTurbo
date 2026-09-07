@@ -36,7 +36,10 @@ data class TaskConfig(
     val fontSize: Int = 60,
     val strokeColor: String = "#000000",
     val strokeWidth: Float = 1.5f,
+    val roundedSubtitleBackground: Boolean = false,
     val paragraphNumber: Int = 1,
+    val nThreads: Int = 2,
+    val soniloBgmPrompt: String = "",
     val videoScriptPrompt: String = "",
     val customSystemPrompt: String = "",
     // Execution mode for this task
@@ -81,13 +84,13 @@ enum class VideoSource(val vValue: String) {
     companion object { fun from(v: String?) = entries.firstOrNull { it.vValue == v } ?: PEXELS }
 }
 enum class BgmType(val vValue: String) {
-    NONE("none"), RANDOM("random"), PRESET("preset"), CUSTOM("custom");
+    NONE("none"), RANDOM("random"), PRESET("preset"), CUSTOM("custom"), SONILO("sonilo");
     companion object { fun from(v: String?) = entries.firstOrNull { it.vValue == v } ?: NONE }
 }
 
 /** Task state machine — parity with upstream const.py: -1 failed / 1 complete / 4 processing. */
 enum class TaskStatus(val code: Int) {
-    QUEUED(0), RUNNING(4), COMPLETED(1), FAILED(-1), CANCELLED(-1);
+    QUEUED(0), RUNNING(4), COMPLETED(1), FAILED(-1), CANCELLED(-2);
 
     companion object { fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: QUEUED }
 }
@@ -111,6 +114,9 @@ data class LlmProvider(
 
 enum class LlmKind { OPENAI_COMPATIBLE, GEMINI }
 
+enum class TtsProvider { EDGE, OPENAI_COMPATIBLE }
+enum class SubtitleProvider { EDGE, WHISPER_OPENAI_COMPATIBLE }
+
 /** Stock media provider keys. */
 @Serializable
 data class StockKeys(
@@ -131,7 +137,13 @@ data class AppSettings(
     val termsProviderId: String = "",
     val termsModel: String = "",
     val defaultVoice: String = "",
+    val ttsProvider: TtsProvider = TtsProvider.EDGE,
+    val ttsModel: String = "tts-1",
     val ttsBaseUrl: String = "https://tts.dptech.fun/v1/tts",
+    val soniloBaseUrl: String = "https://api.sonilo.com",
+    val subtitleProvider: SubtitleProvider = SubtitleProvider.EDGE,
+    val whisperBaseUrl: String = "",
+    val whisperModel: String = "whisper-1",
     val defaultBgmVolume: Float = 0.2f,
     val defaultFontSize: Int = 60,
     val defaultFont: String = "",

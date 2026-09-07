@@ -7,6 +7,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -17,17 +18,23 @@ import androidx.navigation.NavController
 import com.moneyprinterturbo.android.MptApplication
 import com.moneyprinterturbo.android.R
 import com.moneyprinterturbo.android.core.model.TaskStatus
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import com.moneyprinterturbo.android.ui.components.*
 
 /** Task detail: live progress, stage, selectable logs w/ copy+share, error + retry/cancel. */
 @Composable
 fun TaskScreen(nav: NavController, id: String) {
     val app = LocalContext.current.applicationContext as MptApplication
+    val scope = rememberCoroutineScope()
     var task by remember { mutableStateOf<com.moneyprinterturbo.android.core.db.TaskEntity?>(null) }
     LaunchedEffect(id) {
         while (true) {
-            task = app.repository.task(id)
-            kotlinx.coroutines.delay(1500)
+            val latest = app.repository.task(id)
+            task = latest
+            if (latest == null || latest.status !in setOf(TaskStatus.QUEUED.code, TaskStatus.RUNNING.code)) break
+            kotlinx.coroutines.delay(1000)
         }
     }
     val t = task ?: return
@@ -44,13 +51,13 @@ fun TaskScreen(nav: NavController, id: String) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (t.status == TaskStatus.RUNNING.code) {
-                Button(onClick = { kotlinx.coroutines.runBlocking { app.repository.cancelTask(t.id) } }) {
+                Button(onClick = { scope.launch { app.repository.cancelTask(t.id) } }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
             if (t.status == TaskStatus.FAILED.code) {
                 Button(onClick = {
-                    kotlinx.coroutines.runBlocking { app.repository.retryTask(t.id) }
+                    scope.launch { app.repository.retryTask(t.id) }
                 }) { Text(stringResource(R.string.retry)) }
             }
             if (t.videoPath != null) {
@@ -65,6 +72,34 @@ fun TaskScreen(nav: NavController, id: String) {
                         .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
                 }) { Text(stringResource(R.string.play)) }
+            }
+        }
+
+        val outputPaths = remember(t.outputPathsJson) {
+            try { Json.decodeFromString(ListSerializer(String.serializer()), t.outputPathsJson) } catch (_: Exception) {
+                listOfNotNull(t.videoPath)
+            }
+        }.distinct().filter { it.isNotBlank() }
+        if (outputPaths.isNotEmpty()) {
+            SectionCard("Generated videos (${outputPaths.size})") {
+                outputPaths.forEachIndexed { index, path ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Video ${index + 1}", Modifier.weight(1f))
+                        TextButton(onClick = {
+                            val file = java.io.File(path)
+                            if (!file.exists()) {
+                                Toast.makeText(app, "File missing", Toast.LENGTH_SHORT).show()
+                                return@TextButton
+                            }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                                .setDataAndType(
+                                    androidx.core.content.FileProvider.getUriForFile(app, app.packageName + ".fileprovider", file),
+                                    "video/mp4",
+                                ).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
+                        }) { Text("Play") }
+                    }
+                }
             }
         }
 

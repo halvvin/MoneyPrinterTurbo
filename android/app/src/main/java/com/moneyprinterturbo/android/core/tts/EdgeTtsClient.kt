@@ -28,7 +28,9 @@ class EdgeTtsClient(private val http: OkHttpClient) {
 
     companion object {
         const val TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
-        const val CHROMIUM_FULL_VERSION = "130.0.2849.68"
+        // Microsoft blocks stale Sec-MS-GEC-Version values with HTTP 403. Keep in sync
+        // with a current Edge release (reference: edge-tts 7.2.8 uses 143.0.3650.75).
+        const val CHROMIUM_FULL_VERSION = "143.0.3650.75"
         const val BASE_WSS =
             "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1"
 
@@ -82,7 +84,7 @@ class EdgeTtsClient(private val http: OkHttpClient) {
 
             val req = Request.Builder().url(wssUrl())
                 .header("Origin", "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/$CHROMIUM_FULL_VERSION")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/$CHROMIUM_FULL_VERSION")
                 .header("Accept-Encoding", "gzip, deflate, br")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .build()

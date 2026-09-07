@@ -69,7 +69,15 @@ class EdgeTtsClient(private val http: OkHttpClient) {
         }
 
         private fun dateStamp(): String {
-            val fmt = java.text.SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss 'GMT'0000 (Coordinated Universal Time)", Locale.US)
+            // JavaScript-style date string, EXACTLY like the reference client sends:
+            //   "Mon Sep 07 2026 17:19:41 GMT+0000 (Coordinated Universal Time)"
+            // Everything from "GMT" on must be a quoted literal — unquoted
+            // letters (C/o/a/d/e...) are SimpleDateFormat pattern chars and
+            // throw IllegalArgumentException("Illegal pattern character ...").
+            val fmt = java.text.SimpleDateFormat(
+                "EEE MMM dd yyyy HH:mm:ss 'GMT+0000 (Coordinated Universal Time)'",
+                Locale.US,
+            )
             fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
             return fmt.format(Date())
         }

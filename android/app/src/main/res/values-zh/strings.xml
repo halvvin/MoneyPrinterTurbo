@@ -124,5 +124,11 @@
     <string name="remove_stored_key">删除已存储的密钥</string>
     <string name="logging_description">诊断日志记录阶段、网络元数据和错误到应用私有文件。已脱敏。可在此导出。</string>
     <string name="export_logs">导出日志</string>
+    <string name="download">下载</string>
+    <string name="file_missing">文件不存在</string>
+    <string name="no_player_app">设备上没有找到视频播放器</string>
+    <string name="no_share_target">没有应用可处理此操作 — 请使用下载</string>
+    <string name="saved_to">已保存到 %1$s</string>
+    <string name="save_failed">保存失败：%1$s</string>
     <string name="clear_logs">清除日志</string>
 </resources>

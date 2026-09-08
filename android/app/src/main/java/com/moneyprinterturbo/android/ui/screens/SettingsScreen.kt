@@ -219,9 +219,25 @@ fun SettingsScreen(nav: NavController) {
                             .putExtra(android.content.Intent.EXTRA_STREAM, uri)
                             .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        app.startActivity(android.content.Intent.createChooser(intent, "Export diagnostic log"))
+                        try {
+                            app.startActivity(android.content.Intent.createChooser(intent, "Export diagnostic log"))
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(app, app.getString(R.string.no_share_target), android.widget.Toast.LENGTH_LONG).show()
+                        }
                     }
                 }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.export_logs)) }
+                // Real download of the diagnostic bundle into public Downloads.
+                Button(onClick = {
+                    scope.launch {
+                        try {
+                            val file = AppLogger.export(app)
+                            val out = saveLogToDownloads(app, file.readText(), "mpt-logs-${System.currentTimeMillis()}.txt")
+                            Toast.makeText(app, app.getString(R.string.saved_to, out), Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(app, app.getString(R.string.save_failed, e.message), android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.download)) }
                 OutlinedButton(onClick = { AppLogger.clear(app) }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.clear_logs))
                 }

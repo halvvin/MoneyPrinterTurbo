@@ -219,7 +219,11 @@ fun HistoryScreen(nav: NavController) {
                                         )
                                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    app.startActivity(Intent.createChooser(intent, "Play video"))
+                                    try {
+                                        app.startActivity(Intent.createChooser(intent, "Play video"))
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(app, app.getString(R.string.no_player_app), android.widget.Toast.LENGTH_LONG).show()
+                                    }
                                 }) { Text(stringResource(R.string.play)) }
                             }
                         },

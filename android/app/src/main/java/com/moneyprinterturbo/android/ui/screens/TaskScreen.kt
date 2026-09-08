@@ -46,6 +46,22 @@ fun TaskScreen(nav: NavController, id: String) {
     ) {
         Text(t.subject.ifBlank { t.id.take(8) }, style = MaterialTheme.typography.titleLarge)
         StatusChip(t.status, t.progress)
+        if (t.status == TaskStatus.STOPPED_AT.code) {
+            // Show which artifacts are available for inspection/editing.
+            val cfg = remember(t.configJson) { runCatching {
+                com.moneyprinterturbo.android.core.db.DbJson.configFromString(t.configJson) }.getOrNull() }
+            Text(
+                buildString {
+                    append("Stopped at stage: ${t.stage}. ")
+                    if (cfg?.videoScript?.isNotBlank() == true) append("Script: ${cfg.videoScript.length} chars. ")
+                    if (!cfg?.videoTerms.isNullOrEmpty()) append("Terms: ${cfg.videoTerms.size}. ")
+                    if (!cfg?.videoMaterials.isNullOrEmpty()) append("Materials: ${cfg.videoMaterials.size}. ")
+                    append("Edit them in the project, then press Continue.")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+        }
         LinearProgressIndicator(progress = { t.progress / 100f }, modifier = Modifier.fillMaxWidth())
         Text(stringResource(R.string.stage) + ": " + t.stage, style = MaterialTheme.typography.bodyMedium)
 
@@ -59,6 +75,15 @@ fun TaskScreen(nav: NavController, id: String) {
                 Button(onClick = {
                     scope.launch { app.repository.retryTask(t.id) }
                 }) { Text(stringResource(R.string.retry)) }
+            }
+            if (t.status == TaskStatus.STOPPED_AT.code) {
+                // P2.2: pipeline stopped at an intermediate stage — continue to finish.
+                Button(onClick = {
+                    scope.launch {
+                        runCatching { app.repository.continueStoppedTask(t.id) }
+                            .onFailure { Toast.makeText(app, it.message ?: "error", Toast.LENGTH_LONG).show() }
+                    }
+                }) { Text(stringResource(R.string.continue_task)) }
             }
             if (t.videoPath != null) {
                 Button(onClick = {

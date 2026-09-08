@@ -65,6 +65,7 @@
     <string name="rerun_generate">生成视频</string>
     <string name="tasks">任务</string>
     <string name="retry">重试</string>
+    <string name="continue_task">继续</string>
     <string name="play">播放</string>
     <string name="stage">阶段</string>
     <string name="logs">执行日志</string>

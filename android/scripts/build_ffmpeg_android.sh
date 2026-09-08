@@ -194,12 +194,12 @@ export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
     --disable-zlib --disable-lzma --disable-iconv --disable-bzlib \
     --disable-sdl2 --disable-xlib --disable-libxcb --disable-vaapi --disable-vdpau \
     --enable-protocol=file,pipe,concat \
-    --enable-demuxer=mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,image2,concat,mp3,ogg,wav,aac,flac \
+    --enable-demuxer=mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,image2,concat,mp3,ogg,wav,aac,flac,srt,ass \
     --enable-muxer=mp4,matroska,mp3,adts \
     --enable-filter=scale,crop,pad,fps,format,setsar,fade,subtitles,amix,volume,afade,apad,anull,anullsrc,aresample,concat,copy,setpts,zoompan \
     --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb,aac_adtstoasc \
     --enable-parser=h264,hevc,aac,mp3,mpegaudio,vp9,opus,flac \
-    --enable-decoder=h264,hevc,mpeg4,vp8,vp9,av1,aac,mp3,opus,flac,vorbis,pcm_s16le,mjpeg,png,webp \
+    --enable-decoder=h264,hevc,mpeg4,vp8,vp9,av1,aac,mp3,opus,flac,vorbis,pcm_s16le,mjpeg,png,webp,srt,ass \
     --enable-encoder=libx264,aac,mpeg4
 make -j"$JOBS"
 

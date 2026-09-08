@@ -2,6 +2,7 @@ package com.moneyprinterturbo.android.pipeline
 
 import android.content.Context
 import com.moneyprinterturbo.android.core.db.MptDatabase
+import com.moneyprinterturbo.android.core.db.DbJson
 import com.moneyprinterturbo.android.core.db.TaskEntity
 import com.moneyprinterturbo.android.core.logging.AppLogger
 import com.moneyprinterturbo.android.core.llm.LlmService
@@ -40,6 +41,8 @@ class TaskPipeline(
     data class Progress(val status: TaskStatus, val stage: Stage, val progress: Int, val message: String? = null)
 
     class CancelledException : Exception("task cancelled")
+    /** P2.2: internal control-flow signal — artifacts already persisted; run() must NOT overwrite state. */
+    class StoppedAtException(val stage: Stage) : Exception("stopped at ${stage.name}")
 
     @Volatile var cancelled: Boolean = false
         private set
@@ -61,6 +64,25 @@ class TaskPipeline(
 
     private data class PipelineResult(val first: File, val outputs: List<File>)
 
+    /**
+     * P2.2 stop_at: persist everything generated SO FAR (script/terms/materials in the
+     * config) and mark the task STOPPED_AT. The user inspects/edits those artifacts
+     * (project editor / re-run with same config); "Continue" re-queues the same task
+     * with stopAt=VIDEO so the pipeline skips already-present artifacts and finishes.
+     */
+    private suspend fun stoppedAt(task: TaskEntity, config: TaskConfig, stage: Stage): PipelineResult {
+        val cfg = config.copy(stopAt = StopAt.VIDEO) // continue runs the rest
+        db.taskDao().updateConfigAndState(
+            task.id, DbJson.configToString(cfg),
+            TaskStatus.STOPPED_AT.code, 100, stage.name, System.currentTimeMillis(),
+        )
+        update(task.id, TaskStatus.STOPPED_AT, stage, 100,
+            "stopped at stage=${stage.name} (stop_at) — artifacts saved to task; press Continue to finish the video")
+        AppLogger.log(context, "PIPELINE", "stop_at=${stage.name} task=${task.id} artifacts persisted")
+        // No video output — markComplete is NOT called; run() keeps STOPPED_AT state.
+        throw StoppedAtException(stage)
+    }
+
     suspend fun run(task: TaskEntity): TaskEntity {
         cancelled = false
         val config = com.moneyprinterturbo.android.core.db.DbJson.configFromString(task.configJson)
@@ -71,6 +93,10 @@ class TaskPipeline(
             db.projectDao().get(task.projectId)?.let { p ->
                 db.projectDao().upsert(p.copy(lastStatus = TaskStatus.COMPLETED.code, lastVideoPath = result.first.absolutePath, updatedAt = System.currentTimeMillis()))
             }
+            return db.taskDao().get(task.id)!!
+        } catch (e: StoppedAtException) {
+            // State + artifacts already persisted by stoppedAt(); nothing to overwrite.
+            AppLogger.log(context, "PIPELINE", "task=${task.id} ${e.message}")
             return db.taskDao().get(task.id)!!
         } catch (e: CancelledException) {
             db.taskDao().updateProgress(task.id, TaskStatus.CANCELLED.code, 0, Stage.QUEUED.name, System.currentTimeMillis())
@@ -147,6 +173,7 @@ class TaskPipeline(
             update(task.id, TaskStatus.RUNNING, Stage.SCRIPT, 10,
                 "script generated (${config.videoScript.length} chars) via ${provider.name}")
         }
+        if (config.stopAt == StopAt.SCRIPT) return stoppedAt(task, config, Stage.SCRIPT)
 
         // ---------- 2. TERMS ----------
         AppLogger.log(context, "PIPELINE", "stage=TERMS task=${task.id}")
@@ -163,12 +190,14 @@ class TaskPipeline(
             )
             update(task.id, TaskStatus.RUNNING, Stage.TERMS, 20, "terms: ${config.videoTerms.joinToString()}")
         }
+        if (config.stopAt == StopAt.TERMS) return stoppedAt(task, config, Stage.TERMS)
 
         // ---------- 3. MATERIALS ----------
         AppLogger.log(context, "PIPELINE", "stage=MATERIALS task=${task.id}")
-        val materials: List<MaterialInfo> = if (config.videoMaterials.isNotEmpty()) {
-            update(task.id, TaskStatus.RUNNING, Stage.MATERIALS, 25, "using ${config.videoMaterials.size} pre-selected materials")
-            config.videoMaterials
+        val preselected: List<MaterialInfo> = config.videoMaterials
+        val materials: List<MaterialInfo> = if (preselected.isNotEmpty()) {
+            update(task.id, TaskStatus.RUNNING, Stage.MATERIALS, 25, "using ${preselected.size} pre-selected materials")
+            preselected
         } else {
             update(task.id, TaskStatus.RUNNING, Stage.MATERIALS, 20, "searching stock media")
             checkCancel()
@@ -194,8 +223,10 @@ class TaskPipeline(
                 update(task.id, TaskStatus.RUNNING, Stage.MATERIALS, p, null)
             }
             if (results.isEmpty()) throw Exception("no stock materials found — check API keys, network, or pick local media")
+            config.videoMaterials = results
             results
         }
+        if (config.stopAt == StopAt.MATERIALS) return stoppedAt(task, config, Stage.MATERIALS)
 
         // ---------- 4. AUDIO ----------
         AppLogger.log(context, "PIPELINE", "stage=AUDIO task=${task.id}")
@@ -218,6 +249,7 @@ class TaskPipeline(
         }
         val audioDuration = composer.probeDuration(audioFile) ?: 30.0
         update(task.id, TaskStatus.RUNNING, Stage.AUDIO, 50, "voiceover ready (${audioDuration.toInt()}s)")
+        if (config.stopAt == StopAt.AUDIO) return stoppedAt(task, config, Stage.AUDIO)
 
         // ---------- 5. SUBTITLE ----------
         AppLogger.log(context, "PIPELINE", "stage=SUBTITLE task=${task.id}")
@@ -257,6 +289,7 @@ class TaskPipeline(
             srtFile = File(dir, "subtitle.srt").also { it.writeText(Srt.write(cues)) }
             update(task.id, TaskStatus.RUNNING, Stage.SUBTITLE, 60, "subtitle cues: ${cues.size}")
         }
+        if (config.stopAt == StopAt.SUBTITLE) return stoppedAt(task, config, Stage.SUBTITLE)
         // ---------- 6. COMBINE ----------
         AppLogger.log(context, "PIPELINE", "stage=COMBINE task=${task.id}")
         update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 60, "composing video")

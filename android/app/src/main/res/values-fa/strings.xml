@@ -65,6 +65,7 @@
     <string name="rerun_generate">تولید ویدیو</string>
     <string name="tasks">کارها</string>
     <string name="retry">تلاش مجدد</string>
+    <string name="continue_task">ادامه</string>
     <string name="play">پخش</string>
     <string name="stage">مرحله</string>
     <string name="logs">لاگ اجرا</string>

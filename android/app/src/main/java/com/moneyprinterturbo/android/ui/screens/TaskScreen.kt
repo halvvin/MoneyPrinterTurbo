@@ -218,7 +218,7 @@ private suspend fun saveToGallery(context: android.content.Context, src: java.io
     }
 
 /** Save the task log into the public Downloads folder. Returns the display path. */
-private suspend fun saveLogToDownloads(context: android.content.Context, log: String, name: String): String =
+suspend fun saveLogToDownloads(context: android.content.Context, log: String, name: String): String =
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val values = android.content.ContentValues().apply {
             put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)

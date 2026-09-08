@@ -87,6 +87,10 @@ interface TaskDao {
     @Query("UPDATE tasks SET error = :error, status = -1, updatedAt = :now WHERE id = :id")
     suspend fun markFailed(id: String, error: String, now: Long)
 
+    /** P2.2: persist config (with generated artifacts) + mark stopped-at state. */
+    @Query("UPDATE tasks SET configJson = :configJson, status = :status, progress = :progress, stage = :stage, updatedAt = :now WHERE id = :id")
+    suspend fun updateConfigAndState(id: String, configJson: String, status: Int, progress: Int, stage: String, now: Long)
+
     @Query("UPDATE tasks SET videoPath = :path, outputPathsJson = :outputPathsJson, status = 1, progress = 100, stage = 'DONE', updatedAt = :now, finishedAt = :now WHERE id = :id")
     suspend fun markComplete(id: String, path: String, outputPathsJson: String, now: Long)
 

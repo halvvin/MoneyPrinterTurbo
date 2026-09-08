@@ -8,6 +8,7 @@ import com.moneyprinterturbo.android.core.db.TaskEntity
 import com.moneyprinterturbo.android.core.logging.AppLogger
 import com.moneyprinterturbo.android.core.model.TaskConfig
 import com.moneyprinterturbo.android.core.model.TaskStatus
+import com.moneyprinterturbo.android.core.model.StopAt
 import com.moneyprinterturbo.android.core.storage.PrefsStore
 import com.moneyprinterturbo.android.pipeline.RenderWorker
 import java.util.UUID
@@ -111,13 +112,36 @@ class Repository(
         db.taskDao().updateProgress(taskId, TaskStatus.CANCELLED.code, 0, "QUEUED", System.currentTimeMillis())
     }
 
-    /** Re-run: clone the task config into a fresh task. */
+    /** Re-run: clone the task config into a fresh task.
+     *  P2.2: a STOPPED_AT task re-runs from the beginning with the SAME task semantics
+     *  (upstream has no continue; it re-runs the pipeline, but the saved config already
+     *  contains any artifacts the user inspected/edited — script/terms/materials). */
     suspend fun retryTask(taskId: String): TaskEntity? {
         val src = db.taskDao().get(taskId) ?: return null
         val project = db.projectDao().get(src.projectId) ?: return null
         val config = DbJson.configFromString(src.configJson)
         AppLogger.log(context, "TASK", "retry source=$taskId project=${src.projectId}")
         return queueTask(project, config)
+    }
+
+    /** P2.2: re-queue a STOPPED_AT task so it runs again with the CURRENT config
+     *  (which now includes the user-inspected/edited intermediate artifacts). */
+    suspend fun continueStoppedTask(taskId: String): TaskEntity? {
+        val src = db.taskDao().get(taskId) ?: return null
+        if (src.status != TaskStatus.STOPPED_AT.code) return null
+        val config = DbJson.configFromString(src.configJson)
+        // Continue means: finish the remaining stages → stopAt back to VIDEO.
+        val updated = config.copy(stopAt = StopAt.VIDEO)
+        db.taskDao().updateConfigAndState(
+            taskId, DbJson.configToString(updated),
+            TaskStatus.QUEUED.code, 0, "QUEUED", System.currentTimeMillis(),
+        )
+        db.projectDao().get(src.projectId)?.let {
+            db.projectDao().upsert(it.copy(lastTaskId = taskId, lastStatus = TaskStatus.QUEUED.code, updatedAt = System.currentTimeMillis()))
+        }
+        AppLogger.log(context, "TASK", "continue stopped task=$taskId stopAt=${config.stopAt.vValue}→video")
+        RenderWorker.enqueue(context, taskId)
+        return db.taskDao().get(taskId)
     }
 
     suspend fun task(taskId: String): TaskEntity? = db.taskDao().get(taskId)

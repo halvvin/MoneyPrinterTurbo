@@ -324,10 +324,14 @@ class TaskPipeline(
             )
         }
 
-        // Concat order: sequential or random (parity with upstream concat mode)
-        val ordered = if (config.videoConcatMode == ConcatMode.SEQUENTIAL) scenes
+        // Concat order — upstream parity (task.py): when generating MULTIPLE outputs,
+        // upstream FORCES random concat for every output to maximize variety
+        // (only video_count == 1 honors the user's chosen concat mode).
+        val count = config.videoCount.coerceIn(1, 10)
+        val effectiveConcatMode = if (count > 1) ConcatMode.RANDOM else config.videoConcatMode
+        val ordered = if (effectiveConcatMode == ConcatMode.SEQUENTIAL) scenes
             else scenes.shuffled(kotlin.random.Random(task.id.hashCode()))
-        update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 90, "concatenating ${ordered.size} scenes")
+        update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 90, "concatenating ${ordered.size} scenes (mode=$effectiveConcatMode outputs=$count)")
         var current = composer.concat(ordered)
 
         update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 92, "mixing audio")
@@ -368,9 +372,8 @@ class TaskPipeline(
             }
         }
 
-        update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 98, "finalizing ${config.videoCount} output(s)")
+        update(task.id, TaskStatus.RUNNING, Stage.COMBINE, 98, "finalizing ${count} output(s)")
         val outputs = mutableListOf<File>()
-        val count = config.videoCount.coerceIn(1, 10)
         if (count == 1) {
             val final = File(dir, "final.mp4")
             if (current.absolutePath != final.absolutePath) {
@@ -378,16 +381,17 @@ class TaskPipeline(
             }
             outputs += final
         } else {
+            // Upstream parity (task.py _combine_videos): N outputs = N INDEPENDENT
+            // full render passes over the SAME downloaded materials + audio + SRT.
+            // Progress 90..99 is split evenly across the remaining passes.
+            val passSpan = 9.0 / count
             for (index in 0 until count) {
                 checkCancel()
-                val final = File(dir, "final_${index + 1}.mp4")
-                if (!current.renameTo(final)) current.copyTo(final, overwrite = true)
-                outputs += final
-                if (index != count - 1) {
-                    // Re-run the same source composition for additional outputs with a stable,
-                    // different ordering. This keeps video_count functional rather than merely
-                    // accepting the setting in the UI.
-                    val reordered = scenes.shuffled(kotlin.random.Random(task.id.hashCode() + index + 1))
+                if (index > 0) {
+                    val p90 = (90 + passSpan * index).toInt()
+                    update(task.id, TaskStatus.RUNNING, Stage.COMBINE, p90, "re-composing output ${index + 1}/$count")
+                    // Different stable seed per output → different scene order (upstream: random concat per output)
+                    val reordered = scenes.shuffled(kotlin.random.Random(task.id.hashCode() + index * 7919))
                     current = composer.concat(reordered)
                     current = applyBackgroundMusic(task.id, current, audioFile, config, composer, dir, index + 1)
                     if (srtFile != null) {
@@ -402,10 +406,14 @@ class TaskPipeline(
                         val content: String? = try { srtFile!!.readText() } catch (_: Exception) { null }
                         if (!content.isNullOrBlank()) {
                             staged.writeText(content)
+                            update(task.id, TaskStatus.RUNNING, Stage.COMBINE, p90, "burning subtitles ${index + 1}/$count")
                             current = composer.burnSubtitles(current, staged, FontManager.fontsDir(context), SubtitleStyle.forceStyle(style))
                         }
                     }
                 }
+                val final = File(dir, "final_${index + 1}.mp4")
+                if (!current.renameTo(final)) current.copyTo(final, overwrite = true)
+                outputs += final
             }
         }
         update(task.id, TaskStatus.RUNNING, Stage.DONE, 99, "video ready: ${outputs.size} output(s)")

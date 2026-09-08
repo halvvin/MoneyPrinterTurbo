@@ -124,5 +124,11 @@
     <string name="remove_stored_key">Remove stored key</string>
     <string name="logging_description">Diagnostic logging records stages, network metadata and errors to an app-private file. Secrets are redacted. Export from here.</string>
     <string name="export_logs">Export log</string>
+    <string name="download">Download</string>
+    <string name="file_missing">File missing</string>
+    <string name="no_player_app">No video player found on device</string>
+    <string name="no_share_target">No app found to handle this action — use Download instead</string>
+    <string name="saved_to">Saved to %1$s</string>
+    <string name="save_failed">Save failed: %1$s</string>
     <string name="clear_logs">Clear log</string>
 </resources>

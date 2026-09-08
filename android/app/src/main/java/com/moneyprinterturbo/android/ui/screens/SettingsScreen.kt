@@ -1,5 +1,6 @@
 package com.moneyprinterturbo.android.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -131,10 +132,10 @@ fun SettingsScreen(nav: NavController) {
                 scope.launch {
                     try {
                         com.moneyprinterturbo.android.core.net.SoniloClient(app.applicationContext, app.prefs).testConnection()
-                        android.widget.Toast.makeText(app, "Sonilo connection OK", android.widget.Toast.LENGTH_SHORT).show()
+                        Toast.makeText(app, "Sonilo connection OK", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
                         AppLogger.exception(app, "SONILO_TEST", "connection test failed", e)
-                        android.widget.Toast.makeText(app, "Sonilo: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                        Toast.makeText(app, "Sonilo: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             }, modifier = Modifier.fillMaxWidth()) { Text("Test Sonilo connection") }
@@ -222,7 +223,7 @@ fun SettingsScreen(nav: NavController) {
                         try {
                             app.startActivity(android.content.Intent.createChooser(intent, "Export diagnostic log"))
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(app, app.getString(R.string.no_share_target), android.widget.Toast.LENGTH_LONG).show()
+                            Toast.makeText(app, app.getString(R.string.no_share_target), Toast.LENGTH_LONG).show()
                         }
                     }
                 }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.export_logs)) }
@@ -234,7 +235,7 @@ fun SettingsScreen(nav: NavController) {
                             val out = saveLogToDownloads(app, file.readText(), "mpt-logs-${System.currentTimeMillis()}.txt")
                             Toast.makeText(app, app.getString(R.string.saved_to, out), Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
-                            android.widget.Toast.makeText(app, app.getString(R.string.save_failed, e.message), android.widget.Toast.LENGTH_LONG).show()
+                            Toast.makeText(app, app.getString(R.string.save_failed, e.message), Toast.LENGTH_LONG).show()
                         }
                     }
                 }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.download)) }

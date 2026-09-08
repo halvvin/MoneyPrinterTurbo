@@ -124,5 +124,11 @@
     <string name="remove_stored_key">حذف کلید ذخیره‌شده</string>
     <string name="logging_description">لاگ تشخیصی مراحل، متادیتای شبکه و خطاها را در فایلی خصوصی ثبت می‌کند. اسرار حذف می‌شوند. از همین‌جا خروجی بگیرید.</string>
     <string name="export_logs">خروجی لاگ</string>
+    <string name="download">دانلود</string>
+    <string name="file_missing">فایل یافت نشد</string>
+    <string name="no_player_app">هیچ پخش‌کننده ویدیویی روی دستگاه پیدا نشد</string>
+    <string name="no_share_target">برنامه‌ای برای این کار پیدا نشد — از دانلود استفاده کنید</string>
+    <string name="saved_to">ذخیره شد در %1$s</string>
+    <string name="save_failed">ذخیره ناموفق: %1$s</string>
     <string name="clear_logs">پاک‌سازی لاگ</string>
 </resources>

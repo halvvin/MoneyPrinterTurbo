@@ -62,17 +62,38 @@ fun TaskScreen(nav: NavController, id: String) {
             }
             if (t.videoPath != null) {
                 Button(onClick = {
+                    val file = java.io.File(t.videoPath!!)
+                    if (!file.exists()) {
+                        Toast.makeText(app, app.getString(R.string.file_missing), Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
                         .setDataAndType(
                             androidx.core.content.FileProvider.getUriForFile(
-                                app, app.packageName + ".fileprovider", java.io.File(t.videoPath!!),
+                                app, app.packageName + ".fileprovider", file,
                             ),
                             "video/mp4",
                         )
                         .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
+                    try {
+                        app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
+                    } catch (e: Exception) {
+                        Toast.makeText(app, app.getString(R.string.no_player_app), Toast.LENGTH_LONG).show()
+                    }
                 }) { Text(stringResource(R.string.play)) }
+                // Real download: stream-copy the MP4 into the public Movies dir via
+                // MediaStore so it shows in Gallery — no external player involved.
+                Button(onClick = {
+                    scope.launch {
+                        try {
+                            val path = saveToGallery(app, java.io.File(t.videoPath!!))
+                            Toast.makeText(app, app.getString(R.string.saved_to, path), Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(app, app.getString(R.string.save_failed, e.message), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) { Text(stringResource(R.string.download)) }
             }
         }
 
@@ -89,7 +110,7 @@ fun TaskScreen(nav: NavController, id: String) {
                         TextButton(onClick = {
                             val file = java.io.File(path)
                             if (!file.exists()) {
-                                Toast.makeText(app, "File missing", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(app, app.getString(R.string.file_missing), Toast.LENGTH_SHORT).show()
                                 return@TextButton
                             }
                             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
@@ -98,8 +119,23 @@ fun TaskScreen(nav: NavController, id: String) {
                                     "video/mp4",
                                 ).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                            app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
+                            try {
+                                app.startActivity(android.content.Intent.createChooser(intent, "Play video"))
+                            } catch (e: Exception) {
+                                Toast.makeText(app, app.getString(R.string.no_player_app), Toast.LENGTH_LONG).show()
+                            }
                         }) { Text("Play") }
+                        // Real download to public Movies dir (MediaStore), visible in Gallery.
+                        TextButton(onClick = {
+                            scope.launch {
+                                try {
+                                    val out = saveToGallery(app, java.io.File(path))
+                                    Toast.makeText(app, app.getString(R.string.saved_to, out), Toast.LENGTH_LONG).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(app, app.getString(R.string.save_failed, e.message), Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }) { Text(stringResource(R.string.download)) }
                     }
                 }
             }
@@ -119,8 +155,24 @@ fun TaskScreen(nav: NavController, id: String) {
                         .setType("text/plain")
                         .putExtra(android.content.Intent.EXTRA_TEXT, t.log)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    app.startActivity(android.content.Intent.createChooser(send, shareTitle))
+                    try {
+                        app.startActivity(android.content.Intent.createChooser(send, shareTitle))
+                    } catch (e: Exception) {
+                        clipboard.setText(AnnotatedString(t.log))
+                        Toast.makeText(app, app.getString(R.string.no_share_target), Toast.LENGTH_LONG).show()
+                    }
                 }) { Text(stringResource(R.string.share)) }
+                // Real download of the task log to Downloads via MediaStore.
+                TextButton(onClick = {
+                    scope.launch {
+                        try {
+                            val out = saveLogToDownloads(app, t.log, "mpt-task-${t.id.take(8)}.txt")
+                            Toast.makeText(app, app.getString(R.string.saved_to, out), Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(app, app.getString(R.string.save_failed, e.message), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) { Text(stringResource(R.string.download)) }
             }
             // Selectable long-press text — user can select ranges manually too.
             SelectionContainer {
@@ -132,3 +184,59 @@ fun TaskScreen(nav: NavController, id: String) {
         }
     }
 }
+
+/**
+ * Copy a rendered video into the PUBLIC Movies folder via MediaStore — the file then
+ * appears in Gallery / any file manager. App needs no storage permission for its own
+ * contributions on API 29+. Returns the display path shown to the user.
+ */
+private suspend fun saveToGallery(context: android.content.Context, src: java.io.File): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        if (!src.exists() || src.length() == 0L) throw java.io.IOException("source video is empty")
+        val name = "MoneyPrinterTurbo_${System.currentTimeMillis()}.mp4"
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_MOVIES + "/MoneyPrinterTurbo")
+            put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values,
+        ) ?: throw java.io.IOException("MediaStore rejected the insert")
+        try {
+            resolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
+                ?: throw java.io.IOException("cannot open output stream")
+            values.clear()
+            values.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (e: Exception) {
+            runCatching { resolver.delete(uri, null, null) }
+            throw e
+        }
+        "Movies/MoneyPrinterTurbo/$name"
+    }
+
+/** Save the task log into the public Downloads folder. Returns the display path. */
+private suspend fun saveLogToDownloads(context: android.content.Context, log: String, name: String): String =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
+            put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw java.io.IOException("MediaStore rejected the insert")
+        try {
+            resolver.openOutputStream(uri)?.use { out -> out.write(log.toByteArray(Charsets.UTF_8)) }
+                ?: throw java.io.IOException("cannot open output stream")
+            values.clear()
+            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (e: Exception) {
+            runCatching { resolver.delete(uri, null, null) }
+            throw e
+        }
+        "Download/$name"
+    }

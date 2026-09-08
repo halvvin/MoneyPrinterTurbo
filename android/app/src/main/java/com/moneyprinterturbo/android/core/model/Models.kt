@@ -44,7 +44,18 @@ data class TaskConfig(
     val customSystemPrompt: String = "",
     // Execution mode for this task
     val executionMode: Mode = Mode.LOCAL,
+    // P2.2 stop_at (upstream parity): pipeline stops after this stage and marks the
+    // task STOPPED_AT so the user can inspect/edit the intermediate output. "video"
+    // means run everything (default).
+    val stopAt: StopAt = StopAt.VIDEO,
 )
+
+/** Upstream _run_pipeline stop points. Order matters: script→terms→audio→subtitle→materials→video. */
+@Serializable
+enum class StopAt(val vValue: String) {
+    VIDEO("video"), SCRIPT("script"), TERMS("terms"), AUDIO("audio"), SUBTITLE("subtitle"), MATERIALS("materials");
+    companion object { fun from(v: String?) = entries.firstOrNull { it.vValue == v } ?: VIDEO }
+}
 
 @Serializable
 data class MaterialInfo(
@@ -90,7 +101,9 @@ enum class BgmType(val vValue: String) {
 
 /** Task state machine — parity with upstream const.py: -1 failed / 1 complete / 4 processing. */
 enum class TaskStatus(val code: Int) {
-    QUEUED(0), RUNNING(4), COMPLETED(1), FAILED(-1), CANCELLED(-2);
+    QUEUED(0), RUNNING(4), COMPLETED(1), FAILED(-1), CANCELLED(-2),
+    // P2.2: pipeline stopped at an intermediate stop_at stage; resumable via "Continue".
+    STOPPED_AT(2);
 
     companion object { fun fromCode(code: Int) = entries.firstOrNull { it.code == code } ?: QUEUED }
 }

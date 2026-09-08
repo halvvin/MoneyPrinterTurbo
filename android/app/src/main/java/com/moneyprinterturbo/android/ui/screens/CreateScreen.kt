@@ -319,6 +319,12 @@ fun CreateScreen(nav: NavController) {
                     set(config.copy(videoCount = it.coerceIn(1, 10)))
                 }
                 Spacer(Modifier.height(8.dp))
+                // P2.2 stop_at: generate up to a stage, then stop for inspection/editing.
+                DropdownField(
+                    "Stop at (intermediate)",
+                    StopAt.entries.map { it.vValue }, config.stopAt.vValue,
+                ) { set(config.copy(stopAt = StopAt.from(it))) }
+                Spacer(Modifier.height(8.dp))
                 DropdownField(
                     stringResource(R.string.transition),
                     listOf("none", "fade", "slide", "zoom"), config.videoTransition.name.lowercase(),

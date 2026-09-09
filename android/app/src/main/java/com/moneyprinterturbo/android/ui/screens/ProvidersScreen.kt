@@ -119,11 +119,53 @@ fun ProviderEditScreen(nav: NavController, id: String) {
 
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (isNew) stringResource(R.string.add_provider) else stringResource(R.string.edit_provider), style = MaterialTheme.typography.headlineSmall)
-        OutlinedTextFieldMpt(provider.name, { provider = provider.copy(name = it) }, stringResource(R.string.provider_name))
-        OutlinedTextFieldMpt(provider.baseUrl, { provider = provider.copy(baseUrl = it) }, stringResource(R.string.base_url))
 
-        // --- Key section: masked, never displayed. Blank input always means "keep".
+        // ── 1. Identity ──────────────────────────────────────────────
+        OutlinedTextFieldMpt(provider.name, { provider = provider.copy(name = it) }, stringResource(R.string.provider_name))
+        DropdownField(stringResource(R.string.kind), listOf("openai_compatible", "gemini", "qwen_dashscope", "azure_openai", "cloudflare_gateway", "custom_http"), provider.kind.name.lowercase()) {
+            val newKind = when (it) {
+                "gemini" -> LlmKind.GEMINI
+                "qwen_dashscope" -> LlmKind.QWEN_DASHSCOPE
+                "azure_openai" -> LlmKind.AZURE_OPENAI
+                "cloudflare_gateway" -> LlmKind.CLOUDFLARE_GATEWAY
+                "custom_http" -> LlmKind.CUSTOM_HTTP
+                else -> LlmKind.OPENAI_COMPATIBLE
+            }
+            if (newKind != provider.kind) {
+                val presetBase = when (newKind) {
+                    LlmKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
+                    LlmKind.QWEN_DASHSCOPE -> "https://dashscope-intl.aliyuncs.com"
+                    LlmKind.AZURE_OPENAI -> "https://YOUR-RESOURCE.openai.azure.com"
+                    LlmKind.CLOUDFLARE_GATEWAY -> "https://api.cloudflare.com/client/v4"
+                    LlmKind.OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
+                    else -> provider.baseUrl
+                }
+                provider = provider.copy(kind = newKind, baseUrl = presetBase)
+            }
+        }
+
+        // ── 2. Connection — ONLY the fields this kind actually needs ──
         val keyOk = provider.apiKey.isNotBlank() || storedKey.isNotBlank()
+        when (provider.kind) {
+            LlmKind.OPENAI_COMPATIBLE, LlmKind.GEMINI, LlmKind.QWEN_DASHSCOPE -> {
+                OutlinedTextFieldMpt(provider.baseUrl, { provider = provider.copy(baseUrl = it) }, stringResource(R.string.base_url))
+            }
+            LlmKind.AZURE_OPENAI -> {
+                OutlinedTextFieldMpt(provider.baseUrl, { provider = provider.copy(baseUrl = it) }, "Resource URL (https://<name>.openai.azure.com)")
+                OutlinedTextFieldMpt(provider.apiVersion, { provider = provider.copy(apiVersion = it) }, "api-version (default 2024-02-15-preview)")
+            }
+            LlmKind.CLOUDFLARE_GATEWAY -> {
+                OutlinedTextFieldMpt(provider.accountId, { provider = provider.copy(accountId = it) }, "Cloudflare Account ID")
+                OutlinedTextFieldMpt(provider.gatewayId, { provider = provider.copy(gatewayId = it) }, "AI Gateway ID")
+                OutlinedTextFieldMpt(provider.baseUrl, { provider = provider.copy(baseUrl = it) }, "API base (default https://api.cloudflare.com/client/v4)")
+            }
+            LlmKind.CUSTOM_HTTP -> {
+                OutlinedTextFieldMpt(provider.customUrlTemplate, { provider = provider.copy(customUrlTemplate = it) }, "URL template — e.g. {{BASE_URL}}/chat/completions", minLines = 1)
+                OutlinedTextFieldMpt(provider.baseUrl, { provider = provider.copy(baseUrl = it) }, "{{BASE_URL}} value", minLines = 1)
+            }
+        }
+
+        // --- API key (masked, shared by all kinds) ---
         Text(
             stringResource(if (keyOk) R.string.key_is_set else R.string.key_is_missing),
             color = if (keyOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
@@ -151,49 +193,28 @@ fun ProviderEditScreen(nav: NavController, id: String) {
             }) { Text(stringResource(R.string.remove_stored_key)) }
         }
 
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextFieldMpt(provider.model, { provider = provider.copy(model = it) }, stringResource(R.string.model), modifier = Modifier.weight(1f))
-            TextButton(onClick = { showModelPicker = true }, enabled = provider.baseUrl.isNotBlank()) {
-                Text(stringResource(R.string.fetch_models))
+        // --- Model (all kinds except custom_http need a model/deployment name) ---
+        if (provider.kind != LlmKind.CUSTOM_HTTP) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val modelLabel = if (provider.kind == LlmKind.AZURE_OPENAI) "Deployment (= Model)" else stringResource(R.string.model)
+                OutlinedTextFieldMpt(provider.model, { provider = provider.copy(model = it) }, modelLabel, modifier = Modifier.weight(1f))
+                val canFetch = provider.kind == LlmKind.OPENAI_COMPATIBLE || provider.kind == LlmKind.GEMINI
+                TextButton(onClick = { showModelPicker = true }, enabled = canFetch && provider.baseUrl.isNotBlank()) {
+                    Text(stringResource(R.string.fetch_models))
+                }
             }
         }
-        DropdownField(stringResource(R.string.kind), listOf("openai_compatible", "gemini", "qwen_dashscope", "azure_openai", "cloudflare_gateway", "custom_http"), provider.kind.name.lowercase()) {
-            val newKind = when (it) {
-                "gemini" -> LlmKind.GEMINI
-                "qwen_dashscope" -> LlmKind.QWEN_DASHSCOPE
-                "azure_openai" -> LlmKind.AZURE_OPENAI
-                "cloudflare_gateway" -> LlmKind.CLOUDFLARE_GATEWAY
-                "custom_http" -> LlmKind.CUSTOM_HTTP
-                else -> LlmKind.OPENAI_COMPATIBLE
-            }
-            val presetBase = when (newKind) {
-                LlmKind.QWEN_DASHSCOPE -> "https://dashscope-intl.aliyuncs.com"
-                LlmKind.AZURE_OPENAI -> "https://YOUR-RESOURCE.openai.azure.com"
-                LlmKind.CLOUDFLARE_GATEWAY -> "https://api.cloudflare.com/client/v4"
-                LlmKind.GEMINI -> if (provider.baseUrl.contains("openai")) "https://generativelanguage.googleapis.com/v1beta" else provider.baseUrl
-                else -> provider.baseUrl
-            }
-            provider = provider.copy(kind = newKind, baseUrl = presetBase)
-        }
-        if (provider.kind == LlmKind.AZURE_OPENAI) {
-            OutlinedTextFieldMpt(provider.apiVersion, { provider = provider.copy(apiVersion = it) }, "Azure api-version (default 2024-02-15-preview)")
-            Text("Deployment name goes in the Model field above.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        if (provider.kind == LlmKind.QWEN_DASHSCOPE) {
-            Text("DashScope base: intl default (dashscope-intl.aliyuncs.com). CN users: https://dashscope.aliyuncs.com", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        if (provider.kind == LlmKind.CLOUDFLARE_GATEWAY) {
-            OutlinedTextFieldMpt(provider.accountId, { provider = provider.copy(accountId = it) }, "Cloudflare Account ID")
-            OutlinedTextFieldMpt(provider.gatewayId, { provider = provider.copy(gatewayId = it) }, "AI Gateway ID")
-        }
+
+        // --- CUSTOM_HTTP: method / headers / body / response path ---
         if (provider.kind == LlmKind.CUSTOM_HTTP) {
-            OutlinedTextFieldMpt(provider.customUrlTemplate, { provider = provider.copy(customUrlTemplate = it) }, "URL template — e.g. {{BASE_URL}}/chat/completions", minLines = 1)
-            OutlinedTextFieldMpt(provider.customBodyTemplate, { provider = provider.copy(customBodyTemplate = it) }, "Body JSON template ({{MODEL}} {{SYSTEM}} {{USER}})", minLines = 3, singleLine = false)
-            OutlinedTextFieldMpt(provider.customHeaders, { provider = provider.copy(customHeaders = it) }, "Extra headers (one per line \"Name: value\")", minLines = 2, singleLine = false)
-            OutlinedTextFieldMpt(provider.customResponsePath, { provider = provider.copy(customResponsePath = it) }, "Response path (default choices[0].message.content)", minLines = 1)
             OutlinedTextFieldMpt(provider.customMethod, { provider = provider.copy(customMethod = it) }, "HTTP method (default POST)", minLines = 1)
+            OutlinedTextFieldMpt(provider.customHeaders, { provider = provider.copy(customHeaders = it) }, "Extra headers (one per line \"Name: value\")", minLines = 2, singleLine = false)
+            OutlinedTextFieldMpt(provider.customBodyTemplate, { provider = provider.copy(customBodyTemplate = it) }, "Body JSON template ({{MODEL}} {{SYSTEM}} {{USER}})", minLines = 3, singleLine = false)
+            OutlinedTextFieldMpt(provider.customResponsePath, { provider = provider.copy(customResponsePath = it) }, "Response path (default choices[0].message.content)", minLines = 1)
             Text("Placeholders: {{BASE_URL}} {{MODEL}} {{SYSTEM}} {{USER}} {{API_KEY}} — works with ANY OpenAI-style or custom API.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
         }
+
+        // ── 3. Flags + Save/Test ────────────────────────────────────
         LabeledSwitch(stringResource(R.string.default_provider), provider.isDefault) { provider = provider.copy(isDefault = it) }
         LabeledSwitch(stringResource(R.string.enabled), provider.enabled) { provider = provider.copy(enabled = it) }
 
@@ -204,6 +225,36 @@ fun ProviderEditScreen(nav: NavController, id: String) {
             Button(onClick = {
                 scope.launch {
                     try {
+                        // Per-kind validation BEFORE save — clear message, no more
+                        // mystery "no key / wrong URL" when the task actually runs.
+                        val missing = mutableListOf<String>()
+                        if (provider.name.isBlank()) missing += "Name"
+                        when (provider.kind) {
+                            LlmKind.AZURE_OPENAI -> {
+                                if (provider.baseUrl.isBlank() || "YOUR-RESOURCE" in provider.baseUrl) missing += "Resource URL"
+                                if (provider.model.isBlank()) missing += "Deployment (Model)"
+                            }
+                            LlmKind.CLOUDFLARE_GATEWAY -> {
+                                if (provider.accountId.isBlank()) missing += "Account ID"
+                                if (provider.gatewayId.isBlank()) missing += "Gateway ID"
+                                if (provider.model.isBlank()) missing += "Model"
+                            }
+                            LlmKind.CUSTOM_HTTP -> {
+                                if (provider.customUrlTemplate.isBlank()) missing += "URL template"
+                            }
+                            else -> {
+                                if (provider.baseUrl.isBlank()) missing += stringResource(R.string.base_url)
+                                if (provider.model.isBlank()) missing += stringResource(R.string.model)
+                            }
+                        }
+                        if (provider.apiKey.isBlank() && storedKey.isBlank()) {
+                            // All six kinds are key-based in this app (gemini uses key in URL too).
+                            missing += stringResource(R.string.no_key)
+                        }
+                        if (missing.isNotEmpty()) {
+                            saveError = "missing: " + missing.joinToString(", ")
+                            return@launch
+                        }
                         // Blank key on an existing provider = keep the stored one (don't wipe).
                         val final = if (provider.apiKey.isBlank() && storedKey.isNotBlank())
                             provider.copy(apiKey = storedKey) else provider

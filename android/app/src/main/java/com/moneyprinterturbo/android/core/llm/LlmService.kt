@@ -41,11 +41,7 @@ class LlmService(private val http: OkHttpClient, private val json: Json) {
         }
 
     private fun chatOpenAi(provider: LlmProvider, model: String, system: String, user: String): String {
-        val key = provider.apiKey.trim()
-        if (key.isBlank()) throw LlmException(
-            "provider '${provider.name}' has no API key stored — open Settings → Providers, " +
-                "tap '${provider.name}', paste the key and Save"
-        )
+        val key = requireKey(provider)
         val body = buildJsonObject {
             put("model", model.ifBlank { provider.model })
             put("temperature", provider.temperature)

@@ -221,6 +221,11 @@ fun ProviderEditScreen(nav: NavController, id: String) {
         saveError?.let { ErrorBanner(it) }
         testMsg?.let { Text(testMsg!!, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
 
+        // Capture compose-resolved strings BEFORE the onClick lambda (stringResource
+        // is @Composable and cannot run inside click handlers / try-catch).
+        val strBaseUrl = stringResource(R.string.base_url)
+        val strModel = stringResource(R.string.model)
+        val strNoKey = stringResource(R.string.no_key)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
                 scope.launch {
@@ -243,13 +248,13 @@ fun ProviderEditScreen(nav: NavController, id: String) {
                                 if (provider.customUrlTemplate.isBlank()) missing += "URL template"
                             }
                             else -> {
-                                if (provider.baseUrl.isBlank()) missing += stringResource(R.string.base_url)
-                                if (provider.model.isBlank()) missing += stringResource(R.string.model)
+                                if (provider.baseUrl.isBlank()) missing += strBaseUrl
+                                if (provider.model.isBlank()) missing += strModel
                             }
                         }
                         if (provider.apiKey.isBlank() && storedKey.isBlank()) {
                             // All six kinds are key-based in this app (gemini uses key in URL too).
-                            missing += stringResource(R.string.no_key)
+                            missing += strNoKey
                         }
                         if (missing.isNotEmpty()) {
                             saveError = "missing: " + missing.joinToString(", ")

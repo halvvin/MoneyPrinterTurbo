@@ -157,9 +157,42 @@ fun ProviderEditScreen(nav: NavController, id: String) {
                 Text(stringResource(R.string.fetch_models))
             }
         }
-        DropdownField(stringResource(R.string.kind), listOf("openai_compatible", "gemini"), provider.kind.name.lowercase()) {
-            provider = provider.copy(kind = if (it == "gemini") LlmKind.GEMINI else LlmKind.OPENAI_COMPATIBLE,
-                baseUrl = if (it == "gemini" && provider.baseUrl.contains("openai")) "https://generativelanguage.googleapis.com/v1beta" else provider.baseUrl)
+        DropdownField(stringResource(R.string.kind), listOf("openai_compatible", "gemini", "qwen_dashscope", "azure_openai", "cloudflare_gateway", "custom_http"), provider.kind.name.lowercase()) {
+            val newKind = when (it) {
+                "gemini" -> LlmKind.GEMINI
+                "qwen_dashscope" -> LlmKind.QWEN_DASHSCOPE
+                "azure_openai" -> LlmKind.AZURE_OPENAI
+                "cloudflare_gateway" -> LlmKind.CLOUDFLARE_GATEWAY
+                "custom_http" -> LlmKind.CUSTOM_HTTP
+                else -> LlmKind.OPENAI_COMPATIBLE
+            }
+            val presetBase = when (newKind) {
+                LlmKind.QWEN_DASHSCOPE -> "https://dashscope-intl.aliyuncs.com"
+                LlmKind.AZURE_OPENAI -> "https://YOUR-RESOURCE.openai.azure.com"
+                LlmKind.CLOUDFLARE_GATEWAY -> "https://api.cloudflare.com/client/v4"
+                LlmKind.GEMINI -> if (provider.baseUrl.contains("openai")) "https://generativelanguage.googleapis.com/v1beta" else provider.baseUrl
+                else -> provider.baseUrl
+            }
+            provider = provider.copy(kind = newKind, baseUrl = presetBase)
+        }
+        if (provider.kind == LlmKind.AZURE_OPENAI) {
+            OutlinedTextFieldMpt(provider.apiVersion, { provider = provider.copy(apiVersion = it) }, "Azure api-version (default 2024-02-15-preview)")
+            Text("Deployment name goes in the Model field above.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        }
+        if (provider.kind == LlmKind.QWEN_DASHSCOPE) {
+            Text("DashScope base: intl default (dashscope-intl.aliyuncs.com). CN users: https://dashscope.aliyuncs.com", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        }
+        if (provider.kind == LlmKind.CLOUDFLARE_GATEWAY) {
+            OutlinedTextFieldMpt(provider.accountId, { provider = provider.copy(accountId = it) }, "Cloudflare Account ID")
+            OutlinedTextFieldMpt(provider.gatewayId, { provider = provider.copy(gatewayId = it) }, "AI Gateway ID")
+        }
+        if (provider.kind == LlmKind.CUSTOM_HTTP) {
+            OutlinedTextFieldMpt(provider.customUrlTemplate, { provider = provider.copy(customUrlTemplate = it) }, "URL template — e.g. {{BASE_URL}}/chat/completions", minLines = 1)
+            OutlinedTextFieldMpt(provider.customBodyTemplate, { provider = provider.copy(customBodyTemplate = it) }, "Body JSON template ({{MODEL}} {{SYSTEM}} {{USER}})", minLines = 3, singleLine = false)
+            OutlinedTextFieldMpt(provider.customHeaders, { provider = provider.copy(customHeaders = it) }, "Extra headers (one per line \"Name: value\")", minLines = 2, singleLine = false)
+            OutlinedTextFieldMpt(provider.customResponsePath, { provider = provider.copy(customResponsePath = it) }, "Response path (default choices[0].message.content)", minLines = 1)
+            OutlinedTextFieldMpt(provider.customMethod, { provider = provider.copy(customMethod = it) }, "HTTP method (default POST)", minLines = 1)
+            Text("Placeholders: {{BASE_URL}} {{MODEL}} {{SYSTEM}} {{USER}} {{API_KEY}} — works with ANY OpenAI-style or custom API.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
         }
         LabeledSwitch(stringResource(R.string.default_provider), provider.isDefault) { provider = provider.copy(isDefault = it) }
         LabeledSwitch(stringResource(R.string.enabled), provider.enabled) { provider = provider.copy(enabled = it) }
@@ -187,7 +220,7 @@ fun ProviderEditScreen(nav: NavController, id: String) {
             OutlinedButton(onClick = {
                 scope.launch {
                     val effective = provider.copy(apiKey = provider.apiKey.trim().ifBlank { storedKey })
-                    if (effective.apiKey.isBlank() && effective.kind == LlmKind.OPENAI_COMPATIBLE) {
+                    if (effective.apiKey.isBlank() && effective.kind != LlmKind.GEMINI) {
                         testMsg = "✘ $noKeyStr — paste the key first"
                     } else {
                         testMsg = testingStr
@@ -217,7 +250,7 @@ fun ModelPickerDialog(provider: LlmProvider, onPick: (String) -> Unit, onDismiss
     var err by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var testResults by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    val noKeyWarning = provider.apiKey.isBlank() && provider.kind == LlmKind.OPENAI_COMPATIBLE
+    val noKeyWarning = provider.apiKey.isBlank() && provider.kind != LlmKind.GEMINI
     LaunchedEffect(provider.id) {
         try {
             models = LlmService(

@@ -123,9 +123,22 @@ data class LlmProvider(
     val kind: LlmKind = LlmKind.OPENAI_COMPATIBLE,
     val enabled: Boolean = true,
     val isDefault: Boolean = false,
+    // P2.3 adapter extras (upstream provider extra_fields parity):
+    // Azure: apiVersion (deployment = model). Cloudflare: accountId + gatewayId.
+    // CUSTOM_HTTP: a fully user-defined request template for ANY API:
+    //   placeholders {{URL}}, {{MODEL}}, {{SYSTEM}}, {{USER}}, {{API_KEY}};
+    //   response is read via responsePath (dot path, e.g. "data[0].content" / "output.text").
+    val apiVersion: String = "",
+    val accountId: String = "",
+    val gatewayId: String = "",
+    val customMethod: String = "POST",
+    val customHeaders: String = "",   // one per line: "Header-Name: value"
+    val customBodyTemplate: String = "",
+    val customUrlTemplate: String = "",
+    val customResponsePath: String = "",
 )
 
-enum class LlmKind { OPENAI_COMPATIBLE, GEMINI }
+enum class LlmKind { OPENAI_COMPATIBLE, GEMINI, QWEN_DASHSCOPE, AZURE_OPENAI, CLOUDFLARE_GATEWAY, CUSTOM_HTTP }
 
 enum class TtsProvider { EDGE, OPENAI_COMPATIBLE }
 enum class SubtitleProvider { EDGE, WHISPER_OPENAI_COMPATIBLE }
